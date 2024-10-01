@@ -11,6 +11,11 @@ The Trustful Stellar project consists of two main parts:
 
 Together, these components form an ecosystem that enables the creation, management, and utilization of customized scoring systems on the Stellar network.
 
+## Architecture
+
+![ScorerContract + Scorer Factory (1)](https://github.com/user-attachments/assets/4e39f4ba-fb09-4ead-a7d3-a3141fab6061)
+
+
 ## 1. Scorer Factory
 
 The Scorer Factory is a contract that facilitates the creation and management of multiple Scorer contracts. Its main functions are:
