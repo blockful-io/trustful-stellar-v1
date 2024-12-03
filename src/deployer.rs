@@ -50,7 +50,7 @@ mod test {
     use soroban_sdk::{testutils::Address as _, String, Map, Vec, testutils::BytesN as _, IntoVal};
     mod scorer_contract {
         soroban_sdk::contractimport!(
-            file = "target/wasm32-unknown-unknown/release/trustful_stellar_v1.wasm"
+            file = "wasm/trustful_stellar_v1.wasm"
         );
     }
     #[test]

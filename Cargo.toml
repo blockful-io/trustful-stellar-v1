@@ -29,3 +29,12 @@ lto = true
 [profile.release-with-logs]
 inherits = "release"
 debug-assertions = true
+
+
+[package.metadata.build]
+build-script = true
+
+[package.metadata.package]
+include = [
+    "wasm/**/*",
+]
