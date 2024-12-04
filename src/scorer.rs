@@ -8,8 +8,20 @@ pub struct ScorerBadge {
     pub score: u32,
 }
 
+#[contracttype]
+enum DataKey {
+    Admin,
+    ScorerCreator,
+    ScorerBadges,
+    UserScores,
+    Managers,
+    Initialized,
+}
+
 #[contract]
 pub struct ScorerContract;
+
+
 
 #[contractimpl]
 impl ScorerContract {
@@ -25,11 +37,11 @@ impl ScorerContract {
         scorer_creator.require_auth();
 
         // Store initial state
-        env.storage().persistent().set(&"scorer_creator", &scorer_creator);
-        env.storage().persistent().set(&"scorer_badges", &scorer_badges);
-        env.storage().persistent().set(&"user_scores", &Map::<Address, u32>::new(&env));
-        env.storage().persistent().set(&"managers", &Vec::<Address>::new(&env));
-        env.storage().persistent().set(&"initialized", &true);
+        env.storage().persistent().set(&DataKey::ScorerCreator, &scorer_creator);
+        env.storage().persistent().set(&DataKey::ScorerBadges, &scorer_badges);
+        env.storage().persistent().set(&DataKey::UserScores, &Map::<Address, u32>::new(&env));
+        env.storage().persistent().set(&DataKey::Managers, &Vec::<Address>::new(&env));
+        env.storage().persistent().set(&DataKey::Initialized, &true);
     }
 
     /// Checks if a contract has been initialized
@@ -40,7 +52,7 @@ impl ScorerContract {
     /// # Returns
     /// * `bool` - True if the contract is initialized, false otherwise
     fn is_initialized(env: &Env) -> bool {
-        env.storage().persistent().get(&"initialized").unwrap_or(false)
+        env.storage().persistent().get(&DataKey::Initialized).unwrap_or(false)
     }
 
     /// Retrieves the list of managers and checks if a specific manager exists
@@ -54,7 +66,7 @@ impl ScorerContract {
     ///   - bool: Whether the manager exists in the list
     ///   - Vec<Address>: The complete list of managers
     fn manager_exists(env: &Env, manager: &Address) -> (bool, Vec<Address>) {
-        let managers = env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap();
+        let managers = env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap();
         let exists = managers.iter().any(|m| m == *manager);
         (exists, managers)
     }
@@ -72,7 +84,7 @@ impl ScorerContract {
     pub fn add_manager(env: Env, sender: Address, new_manager: Address) {
         sender.require_auth();
         
-        if sender != env.storage().persistent().get::<&str, Address>(&"scorer_creator").unwrap() {
+        if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
             panic!("Only the scorer creator can add managers");
         }
 
@@ -82,7 +94,7 @@ impl ScorerContract {
         }
         
         managers.push_back(new_manager);
-        env.storage().persistent().set(&"managers", &managers);
+        env.storage().persistent().set(&DataKey::Managers, &managers);
     }
 
     /// Removes a manager from the contract
@@ -98,7 +110,7 @@ impl ScorerContract {
     pub fn remove_manager(env: Env, sender: Address, manager_to_remove: Address) {
         sender.require_auth();
         
-        if sender != env.storage().persistent().get::<&str, Address>(&"scorer_creator").unwrap() {
+        if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
             panic!("Only the scorer creator can remove managers");
         }
         
@@ -109,7 +121,7 @@ impl ScorerContract {
         
         if let Some(index) = managers.iter().position(|m| m == manager_to_remove) {
             managers.remove(index as u32);
-            env.storage().persistent().set(&"managers", &managers);
+            env.storage().persistent().set(&DataKey::Managers, &managers);
         }
     }
 }
@@ -164,7 +176,7 @@ mod test {
         client.add_manager(&scorer_creator, &new_manager);
 
         let managers = env.as_contract(&client.address, || {
-            env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap()
+            env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
         assert_eq!(managers, Vec::from_slice(&env, &[new_manager]));
@@ -178,7 +190,7 @@ mod test {
         client.remove_manager(&scorer_creator, &new_manager);
 
         let managers = env.as_contract(&client.address, || {
-            env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap()
+            env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
         assert_eq!(managers, Vec::<Address>::new(&env));
@@ -215,7 +227,7 @@ mod test {
         client.add_manager(&scorer_creator, &manager3);
 
         let managers = env.as_contract(&client.address, || {
-            env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap()
+            env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
         assert_eq!(managers, Vec::from_slice(&env, &[manager1.clone(), manager2.clone(), manager3.clone()]));
@@ -223,7 +235,7 @@ mod test {
         client.remove_manager(&scorer_creator, &manager2);
 
         let managers_after_remove = env.as_contract(&client.address, || {
-            env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap()
+            env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
         assert_eq!(managers_after_remove, Vec::from_slice(&env, &[manager1, manager3]));
