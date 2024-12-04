@@ -1,4 +1,4 @@
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Map, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String, Vec};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -8,8 +8,26 @@ pub struct ScorerBadge {
     pub score: u32,
 }
 
+#[contracttype]
+enum DataKey {
+    ScorerCreator,
+    ScorerBadges,
+    UserScores,
+    Managers,
+    Initialized,
+}
+
 #[contract]
 pub struct ScorerContract;
+
+#[contracttype]
+#[derive(Debug)]
+enum Error {
+    ContractAlreadyInitialized,
+    Unauthorized,
+    ManagerAlreadyExists,
+    ManagerNotFound,
+}
 
 #[contractimpl]
 impl ScorerContract {
@@ -18,18 +36,46 @@ impl ScorerContract {
         
         // Ensure that the contract is not initialized
         if Self::is_initialized(&env) {
-            panic!("Contract already initialized");
+            panic!("{:?}", Error::ContractAlreadyInitialized);
         }
 
         // Ensure that the scorer creator is the sender
         scorer_creator.require_auth();
 
         // Store initial state
-        env.storage().persistent().set(&"scorer_creator", &scorer_creator);
-        env.storage().persistent().set(&"scorer_badges", &scorer_badges);
-        env.storage().persistent().set(&"user_scores", &Map::<Address, u32>::new(&env));
-        env.storage().persistent().set(&"managers", &Vec::<Address>::new(&env));
-        env.storage().persistent().set(&"initialized", &true);
+        env.storage().persistent().set(&DataKey::ScorerCreator, &scorer_creator);
+        env.storage().persistent().set(&DataKey::ScorerBadges, &scorer_badges);
+        env.storage().persistent().set(&DataKey::UserScores, &Map::<Address, u32>::new(&env));
+        env.storage().persistent().set(&DataKey::Managers, &Vec::<Address>::new(&env));
+        env.storage().persistent().set(&DataKey::Initialized, &true);
+    }
+
+    
+    /// Returns the current version of the contract
+    /// 
+    /// # Returns
+    /// * `u32` - The version number (currently 1)
+    pub fn contract_version() -> u32 {
+        1
+    }
+
+    /// Upgrades the contract's WASM code to a new version
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `new_wasm_hash` - The hash of the new WASM code to upgrade to (32 bytes)
+    /// 
+    /// # Authorization
+    /// * Only the contract admin (scorer_creator) can perform the upgrade
+    /// 
+    /// # Panics
+    /// * If the caller is not the admin
+    /// * If the storage operation fails
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().persistent().get(&DataKey::ScorerCreator).unwrap();
+        admin.require_auth();
+        
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     /// Checks if a contract has been initialized
@@ -40,7 +86,7 @@ impl ScorerContract {
     /// # Returns
     /// * `bool` - True if the contract is initialized, false otherwise
     fn is_initialized(env: &Env) -> bool {
-        env.storage().persistent().get(&"initialized").unwrap_or(false)
+        env.storage().persistent().get(&DataKey::Initialized).unwrap_or(false)
     }
 
     /// Retrieves the list of managers and checks if a specific manager exists
@@ -54,7 +100,7 @@ impl ScorerContract {
     ///   - bool: Whether the manager exists in the list
     ///   - Vec<Address>: The complete list of managers
     fn manager_exists(env: &Env, manager: &Address) -> (bool, Vec<Address>) {
-        let managers = env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap();
+        let managers = env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap();
         let exists = managers.iter().any(|m| m == *manager);
         (exists, managers)
     }
@@ -72,17 +118,17 @@ impl ScorerContract {
     pub fn add_manager(env: Env, sender: Address, new_manager: Address) {
         sender.require_auth();
         
-        if sender != env.storage().persistent().get::<&str, Address>(&"scorer_creator").unwrap() {
-            panic!("Only the scorer creator can add managers");
+        if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
+            panic!("{:?}", Error::Unauthorized);
         }
 
         let (exists, mut managers) = Self::manager_exists(&env, &new_manager);
         if exists {
-            panic!("Manager already exists");
+            panic!("{:?}", Error::ManagerAlreadyExists);
         }
         
         managers.push_back(new_manager);
-        env.storage().persistent().set(&"managers", &managers);
+        env.storage().persistent().set(&DataKey::Managers, &managers);
     }
 
     /// Removes a manager from the contract
@@ -98,18 +144,18 @@ impl ScorerContract {
     pub fn remove_manager(env: Env, sender: Address, manager_to_remove: Address) {
         sender.require_auth();
         
-        if sender != env.storage().persistent().get::<&str, Address>(&"scorer_creator").unwrap() {
-            panic!("Only the scorer creator can remove managers");
+        if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
+            panic!("{:?}", Error::Unauthorized);
         }
         
         let (exists, mut managers) = Self::manager_exists(&env, &manager_to_remove);
         if !exists {
-            panic!("Manager not found");
+            panic!("{:?}", Error::ManagerNotFound);
         }
         
         if let Some(index) = managers.iter().position(|m| m == manager_to_remove) {
             managers.remove(index as u32);
-            env.storage().persistent().set(&"managers", &managers);
+            env.storage().persistent().set(&DataKey::Managers, &managers);
         }
     }
 }
@@ -118,6 +164,7 @@ impl ScorerContract {
 mod test {
     use super::*;
     use soroban_sdk::testutils::Address as _;
+    use crate::test_utils::{old_contract, new_contract};
 
     fn setup_contract() -> (Env, Address, ScorerContractClient<'static>) {
         let env = Env::default();
@@ -149,7 +196,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Contract already initialized")]
+    #[should_panic(expected = "ContractAlreadyInitialized")]
     fn test_double_initialization() {
         let (env, scorer_creator, client) = setup_contract();
         let scorer_badges = Map::new(&env);
@@ -164,7 +211,7 @@ mod test {
         client.add_manager(&scorer_creator, &new_manager);
 
         let managers = env.as_contract(&client.address, || {
-            env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap()
+            env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
         assert_eq!(managers, Vec::from_slice(&env, &[new_manager]));
@@ -178,14 +225,14 @@ mod test {
         client.remove_manager(&scorer_creator, &new_manager);
 
         let managers = env.as_contract(&client.address, || {
-            env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap()
+            env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
         assert_eq!(managers, Vec::<Address>::new(&env));
     }
 
     #[test]
-    #[should_panic(expected = "Only the scorer creator can add managers")]
+    #[should_panic(expected = "Unauthorized")]
     fn test_add_manager_unauthorized() {
         let (env, _scorer_creator, client) = setup_contract();
         let unauthorized_user = Address::generate(&env);
@@ -195,7 +242,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Only the scorer creator can remove managers")]
+    #[should_panic(expected = "Unauthorized")]
     fn test_remove_manager_unauthorized() {
         let (env, _scorer_creator, client) = setup_contract();
         let unauthorized_user = Address::generate(&env);
@@ -215,7 +262,7 @@ mod test {
         client.add_manager(&scorer_creator, &manager3);
 
         let managers = env.as_contract(&client.address, || {
-            env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap()
+            env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
         assert_eq!(managers, Vec::from_slice(&env, &[manager1.clone(), manager2.clone(), manager3.clone()]));
@@ -223,9 +270,28 @@ mod test {
         client.remove_manager(&scorer_creator, &manager2);
 
         let managers_after_remove = env.as_contract(&client.address, || {
-            env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap()
+            env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
         assert_eq!(managers_after_remove, Vec::from_slice(&env, &[manager1, manager3]));
+    }
+
+    #[test]
+    fn test_upgrade() {
+        let (env, _scorer_creator, client) = setup_contract();
+        assert_eq!(1, client.contract_version());
+        let new_wasm_hash = env.deployer().upload_contract_wasm(old_contract::WASM);
+        client.upgrade(&new_wasm_hash);
+
+        assert_eq!(0, client.contract_version());
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized")]
+    fn test_upgrade_unauthorized() {
+        let (env, _scorer_creator, client) = setup_contract();
+        let new_wasm_hash = env.deployer().upload_contract_wasm(new_contract::WASM);
+        env.mock_auths(&[]);
+        client.upgrade(&new_wasm_hash);
     }
 }   
