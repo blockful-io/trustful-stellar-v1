@@ -10,7 +10,6 @@ pub struct ScorerBadge {
 
 #[contracttype]
 enum DataKey {
-    Admin,
     ScorerCreator,
     ScorerBadges,
     UserScores,
