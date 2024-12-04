@@ -1,4 +1,4 @@
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Map, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String, Vec};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,7 +20,14 @@ enum DataKey {
 #[contract]
 pub struct ScorerContract;
 
-
+#[contracttype]
+#[derive(Debug)]
+enum Error {
+    ContractAlreadyInitialized,
+    Unauthorized,
+    ManagerAlreadyExists,
+    ManagerNotFound,
+}
 
 #[contractimpl]
 impl ScorerContract {
@@ -29,7 +36,7 @@ impl ScorerContract {
         
         // Ensure that the contract is not initialized
         if Self::is_initialized(&env) {
-            panic!("Contract already initialized");
+            panic!("{:?}", Error::ContractAlreadyInitialized);
         }
 
         // Ensure that the scorer creator is the sender
@@ -41,6 +48,13 @@ impl ScorerContract {
         env.storage().persistent().set(&DataKey::UserScores, &Map::<Address, u32>::new(&env));
         env.storage().persistent().set(&DataKey::Managers, &Vec::<Address>::new(&env));
         env.storage().persistent().set(&DataKey::Initialized, &true);
+    }
+
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        let admin: Address = env.storage().instance().get(&DataKey::ScorerCreator).unwrap();
+        admin.require_auth();
+        
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
     /// Checks if a contract has been initialized
@@ -84,12 +98,12 @@ impl ScorerContract {
         sender.require_auth();
         
         if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
-            panic!("Only the scorer creator can add managers");
+            panic!("{:?}", Error::Unauthorized);
         }
 
         let (exists, mut managers) = Self::manager_exists(&env, &new_manager);
         if exists {
-            panic!("Manager already exists");
+            panic!("{:?}", Error::ManagerAlreadyExists);
         }
         
         managers.push_back(new_manager);
@@ -110,12 +124,12 @@ impl ScorerContract {
         sender.require_auth();
         
         if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
-            panic!("Only the scorer creator can remove managers");
+            panic!("{:?}", Error::Unauthorized);
         }
         
         let (exists, mut managers) = Self::manager_exists(&env, &manager_to_remove);
         if !exists {
-            panic!("Manager not found");
+            panic!("{:?}", Error::ManagerNotFound);
         }
         
         if let Some(index) = managers.iter().position(|m| m == manager_to_remove) {
@@ -160,7 +174,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Contract already initialized")]
+    #[should_panic(expected = "ContractAlreadyInitialized")]
     fn test_double_initialization() {
         let (env, scorer_creator, client) = setup_contract();
         let scorer_badges = Map::new(&env);
@@ -196,7 +210,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Only the scorer creator can add managers")]
+    #[should_panic(expected = "Unauthorized")]
     fn test_add_manager_unauthorized() {
         let (env, _scorer_creator, client) = setup_contract();
         let unauthorized_user = Address::generate(&env);
@@ -206,7 +220,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Only the scorer creator can remove managers")]
+    #[should_panic(expected = "Unauthorized")]
     fn test_remove_manager_unauthorized() {
         let (env, _scorer_creator, client) = setup_contract();
         let unauthorized_user = Address::generate(&env);
