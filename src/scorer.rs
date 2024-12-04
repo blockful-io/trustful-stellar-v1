@@ -50,8 +50,29 @@ impl ScorerContract {
         env.storage().persistent().set(&DataKey::Initialized, &true);
     }
 
+    
+    /// Returns the current version of the contract
+    /// 
+    /// # Returns
+    /// * `u32` - The version number (currently 1)
+    pub fn contract_version() -> u32 {
+        1
+    }
+
+    /// Upgrades the contract's WASM code to a new version
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `new_wasm_hash` - The hash of the new WASM code to upgrade to (32 bytes)
+    /// 
+    /// # Authorization
+    /// * Only the contract admin (scorer_creator) can perform the upgrade
+    /// 
+    /// # Panics
+    /// * If the caller is not the admin
+    /// * If the storage operation fails
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
-        let admin: Address = env.storage().instance().get(&DataKey::ScorerCreator).unwrap();
+        let admin: Address = env.storage().persistent().get(&DataKey::ScorerCreator).unwrap();
         admin.require_auth();
         
         env.deployer().update_current_contract_wasm(new_wasm_hash);
@@ -143,6 +164,7 @@ impl ScorerContract {
 mod test {
     use super::*;
     use soroban_sdk::testutils::Address as _;
+    use crate::test_utils::{old_contract, new_contract};
 
     fn setup_contract() -> (Env, Address, ScorerContractClient<'static>) {
         let env = Env::default();
@@ -252,5 +274,24 @@ mod test {
         });
         
         assert_eq!(managers_after_remove, Vec::from_slice(&env, &[manager1, manager3]));
+    }
+
+    #[test]
+    fn test_upgrade() {
+        let (env, _scorer_creator, client) = setup_contract();
+        assert_eq!(1, client.contract_version());
+        let new_wasm_hash = env.deployer().upload_contract_wasm(old_contract::WASM);
+        client.upgrade(&new_wasm_hash);
+
+        assert_eq!(0, client.contract_version());
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized")]
+    fn test_upgrade_unauthorized() {
+        let (env, _scorer_creator, client) = setup_contract();
+        let new_wasm_hash = env.deployer().upload_contract_wasm(new_contract::WASM);
+        env.mock_auths(&[]);
+        client.upgrade(&new_wasm_hash);
     }
 }   
