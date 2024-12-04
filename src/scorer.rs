@@ -32,16 +32,43 @@ impl ScorerContract {
         env.storage().persistent().set(&"initialized", &true);
     }
 
-    // Helper function to check initialization
+    /// Checks if a contract has been initialized
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// 
+    /// # Returns
+    /// * `bool` - True if the contract is initialized, false otherwise
     fn is_initialized(env: &Env) -> bool {
         env.storage().persistent().get(&"initialized").unwrap_or(false)
     }
 
-    // Helper function to check if a manager exists
-    fn manager_exists(managers: &Vec<Address>, manager: Address) -> bool {
-        managers.iter().any(|m| m == manager)
+    /// Retrieves the list of managers and checks if a specific manager exists
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `manager` - The address to check for existence in the managers list
+    /// 
+    /// # Returns
+    /// * `(bool, Vec<Address>)` - A tuple containing:
+    ///   - bool: Whether the manager exists in the list
+    ///   - Vec<Address>: The complete list of managers
+    fn manager_exists(env: &Env, manager: &Address) -> (bool, Vec<Address>) {
+        let managers = env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap();
+        let exists = managers.iter().any(|m| m == *manager);
+        (exists, managers)
     }
 
+    /// Adds a new manager to the contract
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `sender` - The address of the account attempting to add the manager
+    /// * `new_manager` - The address of the new manager to be added
+    /// 
+    /// # Panics
+    /// * If the sender is not the scorer creator
+    /// * If the manager already exists
     pub fn add_manager(env: Env, sender: Address, new_manager: Address) {
         sender.require_auth();
         
@@ -49,8 +76,8 @@ impl ScorerContract {
             panic!("Only the scorer creator can add managers");
         }
 
-        let mut managers = env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap();
-        if Self::manager_exists(&managers, new_manager.clone()) {
+        let (exists, mut managers) = Self::manager_exists(&env, &new_manager);
+        if exists {
             panic!("Manager already exists");
         }
         
@@ -58,6 +85,16 @@ impl ScorerContract {
         env.storage().persistent().set(&"managers", &managers);
     }
 
+    /// Removes a manager from the contract
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `sender` - The address of the account attempting to remove the manager
+    /// * `manager_to_remove` - The address of the manager to be removed
+    /// 
+    /// # Panics
+    /// * If the sender is not the scorer creator
+    /// * If the manager does not exist
     pub fn remove_manager(env: Env, sender: Address, manager_to_remove: Address) {
         sender.require_auth();
         
@@ -65,9 +102,8 @@ impl ScorerContract {
             panic!("Only the scorer creator can remove managers");
         }
         
-        let mut managers = env.storage().persistent().get::<&str, Vec<Address>>(&"managers").unwrap();
-        
-        if !Self::manager_exists(&managers, manager_to_remove.clone()) {
+        let (exists, mut managers) = Self::manager_exists(&env, &manager_to_remove);
+        if !exists {
             panic!("Manager not found");
         }
         
