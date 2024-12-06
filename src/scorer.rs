@@ -2,16 +2,9 @@ use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Ma
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ScorerBadge {
-    pub name: String,
-    pub issuer: Address,
-    pub score: u32,
-}
-
-#[contracttype]
 enum DataKey {
     ScorerCreator,
-    ScorerBadges,
+    ScorerBadges(String, Address),
     UserScores,
     Managers,
     Initialized,
@@ -27,12 +20,13 @@ enum Error {
     Unauthorized,
     ManagerAlreadyExists,
     ManagerNotFound,
+    BadgeAlreadyExists,
 }
 
 #[contractimpl]
 impl ScorerContract {
     /// Contract constructor
-    pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<u32, ScorerBadge>) {
+    pub fn initialize(env: Env, scorer_creator: Address) {
         
         // Ensure that the contract is not initialized
         if Self::is_initialized(&env) {
@@ -44,7 +38,6 @@ impl ScorerContract {
 
         // Store initial state
         env.storage().persistent().set(&DataKey::ScorerCreator, &scorer_creator);
-        env.storage().persistent().set(&DataKey::ScorerBadges, &scorer_badges);
         env.storage().persistent().set(&DataKey::UserScores, &Map::<Address, u32>::new(&env));
         env.storage().persistent().set(&DataKey::Managers, &Vec::<Address>::new(&env));
         env.storage().persistent().set(&DataKey::Initialized, &true);
@@ -158,6 +151,39 @@ impl ScorerContract {
             env.storage().persistent().set(&DataKey::Managers, &managers);
         }
     }
+
+    /// Adds a new badge to the contract
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `sender` - The address of the account attempting to add the badge
+    /// * `name` - The name of the badge
+    /// * `score` - The score of the badge
+    pub fn add_badge(env: Env, sender: Address, name: String, score: u32) {
+        sender.require_auth();
+        let managers = env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap();
+        let is_scorer_creator = sender == env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap();
+        let is_manager = managers.iter().any(|m| m == sender);
+
+        // Check if the sender is a manager or the scorer creator
+        if !(is_manager || is_scorer_creator) {
+            panic!("{:?}", Error::Unauthorized);
+        }
+
+        // Validate badge name
+        if name.len() == 0 {
+            panic!("Badge name cannot be empty");
+        }
+
+        let key = DataKey::ScorerBadges(name, sender.clone());
+        
+        if env.storage().persistent().has(&key) {
+            panic!("{:?}", Error::BadgeAlreadyExists);
+        }
+
+        // Armazenar apenas o score
+        env.storage().persistent().set(&key, &score);
+    }
 }
 
 #[cfg(test)]
@@ -172,20 +198,13 @@ mod test {
 
         // Variables to initialize the contract
         let scorer_creator = Address::generate(&env);
-        let mut scorer_badges = Map::new(&env);
-        let badge = ScorerBadge {
-            name: String::from_str(&env, "Test Badge"),
-            issuer: scorer_creator.clone(),
-            score: 100,
-        };
-        scorer_badges.set(1, badge);
 
         // Register the contract
         let scorer_contract_id = env.register_contract(None, ScorerContract);
         let scorer_client = ScorerContractClient::new(&env, &scorer_contract_id);
 
         // Initialize contract
-        scorer_client.initialize(&scorer_creator, &scorer_badges);
+        scorer_client.initialize(&scorer_creator);
 
         (env, scorer_creator, scorer_client)
     }
@@ -199,9 +218,8 @@ mod test {
     #[should_panic(expected = "ContractAlreadyInitialized")]
     fn test_double_initialization() {
         let (env, scorer_creator, client) = setup_contract();
-        let scorer_badges = Map::new(&env);
         
-        client.initialize(&scorer_creator, &scorer_badges);
+        client.initialize(&scorer_creator);
     }
 
     #[test]
