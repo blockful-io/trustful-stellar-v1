@@ -46,8 +46,7 @@ impl Deployer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::scorer::ScorerBadge;
-    use soroban_sdk::{testutils::Address as _, String, Map, Vec, testutils::BytesN as _, IntoVal};
+    use soroban_sdk::{testutils::{Address as _, BytesN as _}, vec, IntoVal, Map, String, Vec};
     mod scorer_contract {
         soroban_sdk::contractimport!(
             file = "wasm/trustful_stellar_v1.wasm"
@@ -60,20 +59,12 @@ mod test {
 
         // Test variables
         let scorer_creator = Address::generate(&env);
-        let mut scorer_badges = Map::new(&env);
-        let badge = ScorerBadge {
-            name: String::from_str(&env, "Test Badge"),
-            issuer: scorer_creator.clone(),
-            score: 100,
-        };
-        scorer_badges.set(1, badge);
-
         // Deploy the generic deployer contract
         let deployer_address = env.register_contract(None, Deployer);
         let deployer = DeployerClient::new(&env, &deployer_address);
 
         // Prepare initialization arguments
-        let init_args: Vec<Val> = (scorer_creator.clone(), scorer_badges).into_val(&env);
+        let init_args = vec![&env, scorer_creator.into_val(&env)];
 
         let init_fn = Symbol::new(&env, "initialize");
         
