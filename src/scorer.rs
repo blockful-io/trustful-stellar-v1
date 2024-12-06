@@ -21,6 +21,9 @@ enum Error {
     ManagerAlreadyExists,
     ManagerNotFound,
     BadgeAlreadyExists,
+    BadgeNotFound,
+    EmptyBadgeName,
+    InvalidIssuer,
 }
 
 #[contractimpl]
@@ -157,9 +160,10 @@ impl ScorerContract {
     /// # Arguments
     /// * `env` - The environment object providing access to the contract's storage
     /// * `sender` - The address of the account attempting to add the badge
+    /// * `issuer` - The address of the issuer of the badge
     /// * `name` - The name of the badge
     /// * `score` - The score of the badge
-    pub fn add_badge(env: Env, sender: Address, name: String, score: u32) {
+    pub fn add_badge(env: Env, sender: Address, issuer: Address, name: String, score: u32) {
         sender.require_auth();
         let managers = env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap();
         let is_scorer_creator = sender == env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap();
@@ -170,19 +174,56 @@ impl ScorerContract {
             panic!("{:?}", Error::Unauthorized);
         }
 
-        // Validate badge name
+        // Validate badge name and issuer
         if name.len() == 0 {
-            panic!("Badge name cannot be empty");
+            panic!("{:?}", Error::EmptyBadgeName);
+        }
+        if issuer.to_string().len() == 0 {
+            panic!("{:?}", Error::InvalidIssuer);
         }
 
-        let key = DataKey::ScorerBadges(name, sender.clone());
+        let key = DataKey::ScorerBadges(name, issuer.clone());
         
         if env.storage().persistent().has(&key) {
             panic!("{:?}", Error::BadgeAlreadyExists);
         }
 
-        // Armazenar apenas o score
         env.storage().persistent().set(&key, &score);
+    }
+
+    /// Removes an existing badge from the contract
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `sender` - The address of the account attempting to remove the badge
+    /// * `issuer` - The address of the issuer of the badge
+    /// * `name` - The name of the badge to be removed
+    pub fn remove_badge(env: Env, sender: Address, issuer: Address, name: String) {
+        sender.require_auth();
+        let managers = env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap();
+        let is_scorer_creator = sender == env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap();
+        let is_manager = managers.iter().any(|m| m == sender);
+
+        // Check if the sender is a manager or the scorer creator
+        if !(is_manager || is_scorer_creator) {
+            panic!("{:?}", Error::Unauthorized);
+        }
+
+        // Validate badge name and issuer
+        if name.len() == 0 {
+            panic!("{:?}", Error::EmptyBadgeName);
+        }
+        if issuer.to_string().len() == 0 {
+            panic!("{:?}", Error::InvalidIssuer);
+        }
+
+        let key = DataKey::ScorerBadges(name, issuer.clone());
+        
+        if !env.storage().persistent().has(&key) {
+            panic!("{:?}", Error::BadgeNotFound);
+        }
+
+        env.storage().persistent().remove(&key);
     }
 }
 
@@ -311,5 +352,38 @@ mod test {
         let new_wasm_hash = env.deployer().upload_contract_wasm(new_contract::WASM);
         env.mock_auths(&[]);
         client.upgrade(&new_wasm_hash);
+    }
+
+    #[test]
+    fn test_remove_badge() {
+        let (env, scorer_creator, client) = setup_contract();
+        let issuer = Address::generate(&env);
+        let badge_name = String::from_str(&env, "TestBadge");
+        let score = 100;
+
+        // Add a badge first
+        client.add_badge(&scorer_creator, &issuer, &badge_name, &score);
+
+        // Remove the badge
+        client.remove_badge(&scorer_creator, &issuer, &badge_name);
+
+        // Check that the badge no longer exists
+        let key = DataKey::ScorerBadges(badge_name.clone(), issuer.clone());
+        let badge_exists = env.as_contract(&client.address, || {
+            env.storage().persistent().has(&key)
+        });
+
+        assert!(!badge_exists, "Badge should be removed");
+    }
+
+    #[test]
+    #[should_panic(expected = "BadgeNotFound")]
+    fn test_remove_nonexistent_badge() {
+        let (env, scorer_creator, client) = setup_contract();
+        let issuer = Address::generate(&env);
+        let badge_name = String::from_str(&env, "NonExistentBadge");
+
+        // Attempt to remove a badge that doesn't exist
+        client.remove_badge(&scorer_creator, &issuer, &badge_name);
     }
 }   
