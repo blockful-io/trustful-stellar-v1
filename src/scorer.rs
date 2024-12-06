@@ -258,7 +258,7 @@ mod test {
     #[test]
     #[should_panic(expected = "ContractAlreadyInitialized")]
     fn test_double_initialization() {
-        let (env, scorer_creator, client) = setup_contract();
+        let (_env, scorer_creator, client) = setup_contract();
         
         client.initialize(&scorer_creator);
     }

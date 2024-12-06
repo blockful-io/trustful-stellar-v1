@@ -46,7 +46,7 @@ impl Deployer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::{Address as _, BytesN as _}, vec, IntoVal, Map, String, Vec};
+    use soroban_sdk::{testutils::{Address as _, BytesN as _}, vec, IntoVal};
     mod scorer_contract {
         soroban_sdk::contractimport!(
             file = "wasm/trustful_stellar_v1.wasm"
