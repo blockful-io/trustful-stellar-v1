@@ -158,6 +158,19 @@ impl ScorerContract {
             env.storage().persistent().set(&DataKey::Managers, &managers);
         }
     }
+
+    /// Retrieves the score of a user
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `user` - The address of the user to retrieve the score for
+    /// 
+    /// # Returns
+    /// * `u32` - The score of the user, or 0 if the user has no score
+    pub fn get_user_score(env: Env, user: Address) -> u32 {
+        let user_scores = env.storage().persistent().get::<DataKey, Map<Address, u32>>(&DataKey::UserScores).unwrap();
+        user_scores.get(user).unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
@@ -293,5 +306,12 @@ mod test {
         let new_wasm_hash = env.deployer().upload_contract_wasm(new_contract::WASM);
         env.mock_auths(&[]);
         client.upgrade(&new_wasm_hash);
+    }
+
+    #[test]
+    fn test_get_user_score() {
+        let (env, _scorer_creator, client) = setup_contract();
+        let user = Address::generate(&env);
+        assert_eq!(0, client.get_user_score(&user));
     }
 }   
