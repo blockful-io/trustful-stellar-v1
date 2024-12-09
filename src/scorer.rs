@@ -1,4 +1,4 @@
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String, Vec, token};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -224,6 +224,11 @@ impl ScorerContract {
         }
 
         env.storage().persistent().remove(&key);
+    }
+
+    pub fn check_balance(env: Env, user: Address, token_address: Address) -> i128 {
+        let client = token::Client::new(&env, &token_address);
+        client.balance(&user)
     }
 }
 
