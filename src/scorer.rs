@@ -155,7 +155,6 @@ impl ScorerContract {
         }
     }
 
-<<<<<<< HEAD
     /// Adds a new badge to the contract
     /// 
     /// # Arguments
@@ -230,7 +229,8 @@ impl ScorerContract {
     pub fn check_balance(env: Env, user: Address, token_address: Address) -> i128 {
         let client = token::Client::new(&env, &token_address);
         client.balance(&user)
-=======
+    }
+
     /// Retrieves the score of a user
     /// 
     /// # Arguments
@@ -242,7 +242,6 @@ impl ScorerContract {
     pub fn get_user_score(env: Env, user: Address) -> u32 {
         let user_scores = env.storage().persistent().get::<DataKey, Map<Address, u32>>(&DataKey::UserScores).unwrap();
         user_scores.get(user).unwrap_or(0)
->>>>>>> origin/main
     }
 }
 
@@ -374,7 +373,6 @@ mod test {
     }
 
     #[test]
-<<<<<<< HEAD
     fn test_remove_badge() {
         let (env, scorer_creator, client) = setup_contract();
         let issuer = Address::generate(&env);
@@ -402,14 +400,15 @@ mod test {
         let (env, scorer_creator, client) = setup_contract();
         let issuer = Address::generate(&env);
         let badge_name = String::from_str(&env, "NonExistentBadge");
-
+    
         // Attempt to remove a badge that doesn't exist
         client.remove_badge(&scorer_creator, &issuer, &badge_name);
-=======
+    }
+
+    #[test]
     fn test_get_user_score() {
         let (env, _scorer_creator, client) = setup_contract();
         let user = Address::generate(&env);
         assert_eq!(0, client.get_user_score(&user));
->>>>>>> origin/main
     }
 }   
