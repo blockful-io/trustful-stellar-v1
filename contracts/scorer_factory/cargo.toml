@@ -1,0 +1,23 @@
+[package]
+name = "scorer_factory"
+version.workspace = true
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/scorer_factory.rs"
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[features]
+testutils = []
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[package.metadata.wasm]
+build-std = ["core"]
+build-std-features = ["panic_immediate_abort"]
