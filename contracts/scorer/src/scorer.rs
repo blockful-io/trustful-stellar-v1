@@ -1,3 +1,4 @@
+#![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String, Vec};
 
 #[contracttype]
@@ -175,10 +176,20 @@ impl ScorerContract {
 
 #[cfg(test)]
 mod test {
+    pub mod old_contract {
+        soroban_sdk::contractimport!(
+            file = "../../wasm/trustful_stellar_v1_test_upgradable.wasm"
+        );
+    }
+    
+    pub mod new_contract {
+        soroban_sdk::contractimport!(
+            file = "../../wasm/trustful_stellar_v1.wasm"
+        );
+    } 
+
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use crate::test_utils::{old_contract, new_contract};
-
     fn setup_contract() -> (Env, Address, ScorerContractClient<'static>) {
         let env = Env::default();
         env.mock_all_auths();

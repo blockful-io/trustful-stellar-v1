@@ -3,15 +3,28 @@ name = "trustful-stellar-v1"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = [
+    "contracts/scorer",
+    "contracts/deployer",
+    "contracts/scorer_factory"
+]
+
+[workspace.package]
+version = "0.1.0"
+
+[workspace.dependencies]
+soroban-sdk = "21.7.7"
+
 [lib]
 crate-type = ["cdylib"]
 doctest = false
 
 [dependencies]
-soroban-sdk = "21.7.7"
+soroban-sdk = { workspace = true }
 
-[dev_dependencies]
-soroban-sdk = { version = "21.7.7", features = ["testutils"] }
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [features]
 testutils = ["soroban-sdk/testutils"]
@@ -38,3 +51,10 @@ build-script = true
 include = [
     "wasm/**/*",
 ]
+
+[package.metadata.scripts]
+build-wasm = """
+cargo build --target wasm32-unknown-unknown --release -p scorer
+cargo build --target wasm32-unknown-unknown --release -p deployer
+cargo build --target wasm32-unknown-unknown --release -p scorer_factory
+"""
