@@ -13,7 +13,7 @@ pub struct ScorerBadge {
 enum DataKey {
     ScorerCreator,
     ScorerBadges,
-    UserScores,
+    Users,
     Managers,
     Initialized,
 }
@@ -46,7 +46,7 @@ impl ScorerContract {
         // Store initial state
         env.storage().persistent().set(&DataKey::ScorerCreator, &scorer_creator);
         env.storage().persistent().set(&DataKey::ScorerBadges, &scorer_badges);
-        env.storage().persistent().set(&DataKey::UserScores, &Map::<Address, u32>::new(&env));
+        env.storage().persistent().set(&DataKey::Users, &Map::<Address, bool>::new(&env));
         env.storage().persistent().set(&DataKey::Managers, &Vec::<Address>::new(&env));
         env.storage().persistent().set(&DataKey::Initialized, &true);
     }
@@ -160,17 +160,68 @@ impl ScorerContract {
         }
     }
 
-    /// Retrieves the score of a user
+    
+    /// Adds a new user to the contract's user registry
     /// 
     /// # Arguments
     /// * `env` - The environment object providing access to the contract's storage
-    /// * `user` - The address of the user to retrieve the score for
+    /// * `user` - The address of the user to be added
+    /// 
+    /// # Authorization
+    /// * Requires authorization from the user being added
+    pub fn add_user(env: Env, sender: Address, user: Address) {
+
+        sender.require_auth();
+
+        // Check if sender is the user or a manager
+        let (is_manager, _) = Self::manager_exists(&env, &sender);
+        if sender != user && !is_manager {
+            panic!("{:?}", Error::Unauthorized);
+        }
+
+        let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
+        users.set(user, true);
+        env.storage().persistent().set(&DataKey::Users, &users);
+    }
+
+    /// Removes a user from the contract's user registry
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `sender` - The address of the account attempting to remove the user
+    /// * `user` - The address of the user to be removed
+    /// 
+    /// # Authorization
+    /// * Requires authorization from the sender
+    /// * Sender must be either the user themselves or a manager
+    /// 
+    /// # Panics
+    /// * If the sender is neither the user nor a manager
+    pub fn remove_user(env: Env, sender: Address, user: Address) {
+        sender.require_auth();
+        
+        // Check if sender is the user or a manager
+        let (is_manager, _) = Self::manager_exists(&env, &sender);
+        if sender != user && !is_manager {
+            panic!("{:?}", Error::Unauthorized);
+        }
+        
+        let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
+        users.set(user, false);
+        env.storage().persistent().set(&DataKey::Users, &users);
+    }
+
+    /// Retrieves the complete map of users and their status
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
     /// 
     /// # Returns
-    /// * `u32` - The score of the user, or 0 if the user has no score
-    pub fn get_user_score(env: Env, user: Address) -> u32 {
-        let user_scores = env.storage().persistent().get::<DataKey, Map<Address, u32>>(&DataKey::UserScores).unwrap();
-        user_scores.get(user).unwrap_or(0)
+    /// * `Map<Address, bool>` - A map where:
+    ///   - Key: User's address
+    ///   - Value: User's status (true = active, false = inactive)
+    pub fn get_users(env: Env) -> Map<Address, bool> {
+        env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap()
     }
 }
 
@@ -320,9 +371,102 @@ mod test {
     }
 
     #[test]
-    fn test_get_user_score() {
+    fn test_add_user() {
+        let (env, scorer_creator, client) = setup_contract();
+        let user = Address::generate(&env);
+        
+        // User can add themselves
+        client.add_user(&user, &user);
+        
+        let users = client.get_users();
+        assert!(users.get(user.clone()).unwrap());
+    }
+
+    #[test]
+    fn test_manager_can_add_user() {
+        let (env, scorer_creator, client) = setup_contract();
+        let manager = Address::generate(&env);
+        let user = Address::generate(&env);
+        
+        // Add manager first
+        client.add_manager(&scorer_creator, &manager);
+        
+        // Manager can add a user
+        client.add_user(&manager, &user);
+        
+        let users = client.get_users();
+        assert!(users.get(user.clone()).unwrap());
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized")]
+    fn test_unauthorized_add_user() {
+        let (env, _scorer_creator, client) = setup_contract();
+        let unauthorized = Address::generate(&env);
+        let user = Address::generate(&env);
+        
+        // Unauthorized address cannot add users
+        client.add_user(&unauthorized, &user);
+    }
+
+    #[test]
+    fn test_remove_user() {
         let (env, _scorer_creator, client) = setup_contract();
         let user = Address::generate(&env);
-        assert_eq!(0, client.get_user_score(&user));
+        
+        // Add user first
+        client.add_user(&user, &user);
+        
+        // User can remove themselves
+        client.remove_user(&user, &user);
+        
+        let users = client.get_users();
+        assert!(!users.get(user.clone()).unwrap());
+    }
+
+    #[test]
+    fn test_manager_can_remove_user() {
+        let (env, scorer_creator, client) = setup_contract();
+        let manager = Address::generate(&env);
+        let user = Address::generate(&env);
+        
+        // Setup: Add manager and user
+        client.add_manager(&scorer_creator, &manager);
+        client.add_user(&user, &user);
+        
+        // Manager can remove user
+        client.remove_user(&manager, &user);
+        
+        let users = client.get_users();
+        assert!(!users.get(user.clone()).unwrap());
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized")]
+    fn test_unauthorized_remove_user() {
+        let (env, _scorer_creator, client) = setup_contract();
+        let unauthorized = Address::generate(&env);
+        let user = Address::generate(&env);
+        
+        // Add user first
+        client.add_user(&user, &user);
+        
+        // Unauthorized address cannot remove users
+        client.remove_user(&unauthorized, &user);
+    }
+
+    #[test]
+    fn test_get_users() {
+        let (env, _scorer_creator, client) = setup_contract();
+        let user1 = Address::generate(&env);
+        let user2 = Address::generate(&env);
+        
+        // Add two users
+        client.add_user(&user1, &user1);
+        client.add_user(&user2, &user2);
+        
+        let users = client.get_users();
+        assert!(users.get(user1.clone()).unwrap());
+        assert!(users.get(user2.clone()).unwrap());
     }
 }   
