@@ -864,6 +864,7 @@ dependencies = [
 name = "scorer_factory"
 version = "0.1.0"
 dependencies = [
+ "scorer",
  "soroban-sdk",
 ]
 
