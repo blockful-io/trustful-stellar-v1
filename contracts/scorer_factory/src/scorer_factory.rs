@@ -142,6 +142,17 @@ impl ScorerFactoryContract {
 
         scorer_address
     }
+
+    /// Returns a map of all scorer contracts created by this factory
+    /// 
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// 
+    /// # Returns
+    /// * `Map<Address, bool>` - A map where keys are scorer contract addresses and values are always true
+    pub fn get_scorers(env: Env) -> Map<Address, bool> {
+        env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::CreatedScorers).unwrap_or(Map::new(&env))
+    }
 }
 
 
@@ -247,5 +258,40 @@ mod test {
             &init_fn,
             &init_args,
         );
+    }
+
+    #[test]
+    fn test_get_scorers() {
+        let (env, scorer_factory_creator, scorer_factory_client) = setup_contract();
+        let scorers = scorer_factory_client.get_scorers();
+        assert!(scorers.len() == 0);
+
+        let salt = BytesN::from_array(&env, &[1; 32]);
+        let init_fn = Symbol::new(&env, "initialize");
+        
+        // Create the badge map
+        let mut scorer_badges = Map::new(&env);
+        let badge = ScorerBadge {
+            name: String::from_str(&env, "Test Badge"),
+            issuer: scorer_factory_creator.clone(),
+            score: 100,
+        };
+        scorer_badges.set(1, badge);
+        let mut init_args: Vec<Val> = Vec::new(&env);
+
+        init_args.push_back(scorer_factory_creator.clone().into_val(&env));        
+        init_args.push_back(scorer_badges.into_val(&env));
+        // Create the scorer contract
+        let scorer_address = scorer_factory_client.create_scorer(
+            &scorer_factory_creator,
+            &salt,
+            &init_fn,
+            &init_args,
+        );
+        
+        assert!(!scorer_address.to_string().is_empty());
+        
+        let scorers = scorer_factory_client.get_scorers();
+        assert!(scorers.len() == 1);    
     }
 }
