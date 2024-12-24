@@ -43,11 +43,15 @@ impl ScorerContract {
         // Ensure that the scorer creator is the sender
         scorer_creator.require_auth();
 
+        // Create initial managers list with scorer_creator
+        let mut initial_managers = Vec::<Address>::new(&env);
+        initial_managers.push_back(scorer_creator.clone());
+
         // Store initial state
         env.storage().persistent().set(&DataKey::ScorerCreator, &scorer_creator);
         env.storage().persistent().set(&DataKey::ScorerBadges, &scorer_badges);
         env.storage().persistent().set(&DataKey::Users, &Map::<Address, bool>::new(&env));
-        env.storage().persistent().set(&DataKey::Managers, &Vec::<Address>::new(&env));
+        env.storage().persistent().set(&DataKey::Managers, &initial_managers);
         env.storage().persistent().set(&DataKey::Initialized, &true);
     }
 
@@ -223,6 +227,19 @@ impl ScorerContract {
     pub fn get_users(env: Env) -> Map<Address, bool> {
         env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap()
     }
+
+    /// Retrieves all scorer badges from the contract's storage
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// 
+    /// # Returns
+    /// * `Map<u32, ScorerBadge>` - A map where:
+    ///   - Key: Badge ID (u32)
+    ///   - Value: ScorerBadge struct containing the badge details
+    pub fn get_badges(env: Env) -> Map<u32, ScorerBadge> {
+        env.storage().persistent().get::<DataKey, Map<u32, ScorerBadge>>(&DataKey::ScorerBadges).unwrap()
+    }   
 }
 
 #[cfg(test)]
