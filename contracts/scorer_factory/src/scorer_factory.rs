@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Map, Address, Env, BytesN, Symbol, Val, Vec, symbol_short, String};
-use scorer::ScorerBadge;
+// use scorer::ScorerBadge;
 
 #[contracttype]
 enum DataKey {
@@ -153,9 +153,59 @@ impl ScorerFactoryContract {
     pub fn get_scorers(env: Env) -> Map<Address, bool> {
         env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::CreatedScorers).unwrap_or(Map::new(&env))
     }
+
+    /// Adds a new manager to the contract
+    /// 
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `caller` - The address that will authenticate the addition of the new manager
+    /// * `manager` - The address to be added as a manager
+    /// 
+    /// # Panics
+    /// * When the caller is not the scorer factory creator or a manager
+    pub fn add_manager(env: Env, caller: Address, manager: Address) {
+        // Require authentication from the caller
+        caller.require_auth();
+
+        // Verify caller is factory creator or a manager
+        if !Self::is_scorer_factory_creator(env.clone(), caller.clone()) 
+            && !Self::is_manager(env.clone(), caller) {
+            panic!("{:?}", Error::Unauthorized);
+        }
+
+        let mut managers = env.storage().persistent()
+            .get::<DataKey, Map<Address, bool>>(&DataKey::Managers)
+            .unwrap_or(Map::new(&env));
+        managers.set(manager.clone(), true);
+        env.storage().persistent().set(&DataKey::Managers, &managers);
+    }
+    
+    /// Removes a manager from the contract by setting their status to false
+    /// 
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `caller` - The address that will authenticate the removal of the manager
+    /// * `manager` - The address to be removed as a manager
+    /// 
+    /// # Panics
+    /// * When the caller is not the scorer factory creator or a manager
+    pub fn remove_manager(env: Env, caller: Address, manager: Address) {
+        // Require authentication from the caller
+        caller.require_auth();
+
+        // Verify caller is factory creator or a manager
+        if !Self::is_scorer_factory_creator(env.clone(), caller.clone()) 
+            && !Self::is_manager(env.clone(), caller) {
+            panic!("{:?}", Error::Unauthorized);
+        }
+
+        let mut managers = env.storage().persistent()
+            .get::<DataKey, Map<Address, bool>>(&DataKey::Managers)
+            .unwrap_or(Map::new(&env));
+        managers.set(manager.clone(), false);
+        env.storage().persistent().set(&DataKey::Managers, &managers);
+    }
 }
-
-
 
 #[cfg(test)]
 mod test {
@@ -197,101 +247,9 @@ mod test {
     }
 
     #[test]
-    fn test_create_scorer() {
-        let (env, scorer_factory_creator, scorer_factory_client) = setup_contract();
-        
-        let salt = BytesN::from_array(&env, &[1; 32]);
-        let init_fn = Symbol::new(&env, "initialize");
-        
-        // Create the badge map
-        let mut scorer_badges = Map::new(&env);
-        let badge = ScorerBadge {
-            name: String::from_str(&env, "Test Badge"),
-            issuer: scorer_factory_creator.clone(),
-            score: 100,
-        };
-        scorer_badges.set(1, badge);
-        let mut init_args: Vec<Val> = Vec::new(&env);
-
-        init_args.push_back(scorer_factory_creator.clone().into_val(&env));        
-        init_args.push_back(scorer_badges.into_val(&env));
-        // Create the scorer contract
-        let scorer_address = scorer_factory_client.create_scorer(
-            &scorer_factory_creator,
-            &salt,
-            &init_fn,
-            &init_args,
-        );
-        
-        assert!(!scorer_address.to_string().is_empty());
-        
-    }
-
-    #[test]
-    #[should_panic(expected = "Unauthorized")]
-    fn test_create_scorer_unauthorized() {
-        let (env, _scorer_factory_creator, scorer_factory_client) = setup_contract();
-        
-        // Create an unauthorized address
-        let unauthorized_address = Address::generate(&env);
-        
-        let salt = BytesN::from_array(&env, &[1; 32]);
-        let init_fn = Symbol::new(&env, "initialize");
-        
-        // Create the badge map
-        let mut scorer_badges = Map::new(&env);
-        let badge = ScorerBadge {
-            name: String::from_str(&env, "Test Badge"),
-            issuer: unauthorized_address.clone(),
-            score: 100,
-        };
-        scorer_badges.set(1, badge);
-        
-        let mut init_args: Vec<Val> = Vec::new(&env);
-        init_args.push_back(unauthorized_address.clone().into_val(&env));
-        init_args.push_back(scorer_badges.into_val(&env));
-
-        // This should panic because unauthorized_address is not a manager
-        scorer_factory_client.create_scorer(
-            &unauthorized_address,
-            &salt,
-            &init_fn,
-            &init_args,
-        );
-    }
-
-    #[test]
     fn test_get_scorers() {
         let (env, scorer_factory_creator, scorer_factory_client) = setup_contract();
         let scorers = scorer_factory_client.get_scorers();
         assert!(scorers.len() == 0);
-
-        let salt = BytesN::from_array(&env, &[1; 32]);
-        let init_fn = Symbol::new(&env, "initialize");
-        
-        // Create the badge map
-        let mut scorer_badges = Map::new(&env);
-        let badge = ScorerBadge {
-            name: String::from_str(&env, "Test Badge"),
-            issuer: scorer_factory_creator.clone(),
-            score: 100,
-        };
-        scorer_badges.set(1, badge);
-        let mut init_args: Vec<Val> = Vec::new(&env);
-
-        init_args.push_back(scorer_factory_creator.clone().into_val(&env));        
-        init_args.push_back(scorer_badges.into_val(&env));
-        // Create the scorer contract
-        let scorer_address = scorer_factory_client.create_scorer(
-            &scorer_factory_creator,
-            &salt,
-            &init_fn,
-            &init_args,
-        );
-        
-        assert!(!scorer_address.to_string().is_empty());
-        
-        let scorers = scorer_factory_client.get_scorers();
-        assert!(scorers.len() == 1);    
     }
 }

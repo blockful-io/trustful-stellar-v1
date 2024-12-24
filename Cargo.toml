@@ -22,6 +22,9 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+scorer = { path = "contracts/scorer" }
+scorer_factory = { path = "contracts/scorer_factory" }
+deployer = { path = "contracts/deployer" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

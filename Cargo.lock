@@ -857,7 +857,6 @@ name = "scorer"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "trustful-stellar-v1",
 ]
 
 [[package]]
@@ -1305,6 +1304,9 @@ dependencies = [
 name = "trustful-stellar-v1"
 version = "0.1.0"
 dependencies = [
+ "deployer",
+ "scorer",
+ "scorer_factory",
  "soroban-sdk",
 ]
 

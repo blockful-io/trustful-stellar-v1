@@ -43,11 +43,15 @@ impl ScorerContract {
         // Ensure that the scorer creator is the sender
         scorer_creator.require_auth();
 
+        // Create initial managers list with scorer_creator
+        let mut initial_managers = Vec::<Address>::new(&env);
+        initial_managers.push_back(scorer_creator.clone());
+
         // Store initial state
         env.storage().persistent().set(&DataKey::ScorerCreator, &scorer_creator);
         env.storage().persistent().set(&DataKey::ScorerBadges, &scorer_badges);
         env.storage().persistent().set(&DataKey::Users, &Map::<Address, bool>::new(&env));
-        env.storage().persistent().set(&DataKey::Managers, &Vec::<Address>::new(&env));
+        env.storage().persistent().set(&DataKey::Managers, &initial_managers);
         env.storage().persistent().set(&DataKey::Initialized, &true);
     }
 
@@ -223,6 +227,19 @@ impl ScorerContract {
     pub fn get_users(env: Env) -> Map<Address, bool> {
         env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap()
     }
+
+    /// Retrieves all scorer badges from the contract's storage
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// 
+    /// # Returns
+    /// * `Map<u32, ScorerBadge>` - A map where:
+    ///   - Key: Badge ID (u32)
+    ///   - Value: ScorerBadge struct containing the badge details
+    pub fn get_badges(env: Env) -> Map<u32, ScorerBadge> {
+        env.storage().persistent().get::<DataKey, Map<u32, ScorerBadge>>(&DataKey::ScorerBadges).unwrap()
+    }   
 }
 
 #[cfg(test)]
@@ -289,7 +306,7 @@ mod test {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
-        assert_eq!(managers, Vec::from_slice(&env, &[new_manager]));
+        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone(), new_manager]));
     }
 
     #[test]
@@ -303,7 +320,8 @@ mod test {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
-        assert_eq!(managers, Vec::<Address>::new(&env));
+        // Only scorer_creator should remain
+        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator]));
     }
 
     #[test]
@@ -340,7 +358,7 @@ mod test {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
-        assert_eq!(managers, Vec::from_slice(&env, &[manager1.clone(), manager2.clone(), manager3.clone()]));
+        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone(), manager1.clone(), manager2.clone(), manager3.clone()]));
 
         client.remove_manager(&scorer_creator, &manager2);
 
@@ -348,7 +366,7 @@ mod test {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
-        assert_eq!(managers_after_remove, Vec::from_slice(&env, &[manager1, manager3]));
+        assert_eq!(managers_after_remove, Vec::from_slice(&env, &[scorer_creator, manager1, manager3]));
     }
 
     #[test]
