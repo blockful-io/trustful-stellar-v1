@@ -306,7 +306,7 @@ mod test {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
-        assert_eq!(managers, Vec::from_slice(&env, &[new_manager]));
+        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone(), new_manager]));
     }
 
     #[test]
@@ -320,7 +320,8 @@ mod test {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
-        assert_eq!(managers, Vec::<Address>::new(&env));
+        // Only scorer_creator should remain
+        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator]));
     }
 
     #[test]
@@ -357,7 +358,7 @@ mod test {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
-        assert_eq!(managers, Vec::from_slice(&env, &[manager1.clone(), manager2.clone(), manager3.clone()]));
+        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone(), manager1.clone(), manager2.clone(), manager3.clone()]));
 
         client.remove_manager(&scorer_creator, &manager2);
 
@@ -365,7 +366,7 @@ mod test {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
         
-        assert_eq!(managers_after_remove, Vec::from_slice(&env, &[manager1, manager3]));
+        assert_eq!(managers_after_remove, Vec::from_slice(&env, &[scorer_creator, manager1, manager3]));
     }
 
     #[test]
