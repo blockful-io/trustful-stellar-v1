@@ -1,73 +1,84 @@
-# Trustful Stellar
+# Trustful
 
-Trustful is an innovative and flexible reputation aggregation system designed for the Stellar blockchain. It allows communities and projects to issue digital badges to recognize and reward user contributions.
+A Verifiable Reputation Aggregation System on Stellar Soroban
 
-## Overview
+Trustful is an innovative reputation aggregation system built on the Stellar Soroban platform that enables communities and projects to issue digital badges recognizing user contributions. These badges serve as verifiable proof of achievements and skills within the Stellar ecosystem.
 
-The Trustful Stellar project consists of two main parts:
+## Project Structure
 
-1. Scorer Factory
-2. Scorer
+The project is organized as follows:
 
-Together, these components form an ecosystem that enables the creation, management, and utilization of customized scoring systems on the Stellar network.
+```
+Trustful/
+├── contracts/       # Smart contracts for the system
+├── src/             # Main file
+├── scripts/         # Utility scripts for deployment and testing
+├── tests/           # Test cases for the contracts
+└── README.md        # Project documentation
+```
 
-## Architecture
+## Architecture Overview
 
-![ScorerContract + Scorer Factory (1)](https://github.com/user-attachments/assets/4e39f4ba-fb09-4ead-a7d3-a3141fab6061)
+The Trustful system is built using a modular architecture consisting of multiple smart contracts to facilitate the creation, management, and verification of digital badges. Below is a brief summary of the key contracts:
 
+### Contract Summaries
 
-## 1. Scorer Factory
+- **Deployer Contract**: Handles the atomic deployment and initialization of other contracts in the system.
+- **Scorer Contract**: Manages badges, scores and users.
+- **Scorer Factory Contract**: Implements a factory pattern to deploy multiple Scorer Contracts efficiently.
 
-The Scorer Factory is a contract that facilitates the creation and management of multiple Scorer contracts. Its main functions are:
+For detailed information on each contract's methods and functionalities, please refer to the README files in the `contracts/` folder.
 
-- Allow the creation of new Scorers in a standardized way by anyway
-- Maintain a record of all created Scorers
+## Design Patterns
 
-### Main Functionalities:
+Trustful implements specific design patterns to ensure security, modularity, and maintainability of contracts. Below are the main patterns used in our implementation:
 
-- `createScorer`: Creates a new Scorer contract with specific parameters
-- `getScorers`: Returns the list of all created Scorers
+### Contract Patterns
 
-## 2. Scorer
+#### Upgradeable Pattern
+Enables contract code updates without losing state or address, crucial for system maintenance and evolution over time.
 
-The Scorer is an individual smart contract that represents a specific scoring system for a community or project.
+#### Factory Pattern
+Used to create and manage multiple instances of Scorer contracts in a standardized way, enabling system scalability.
 
-### Main characteristics of the Scorer:
+#### Access Control Pattern
+Implements a role-based permission system to protect critical contract functions.
 
-- Issuance of digital badges as NFTs
-- Customizable comparison rules
-- Calculation and storage of reputation scores
-- Permission management (creator and managers)
+#### Storage Pattern
+Defines an organized structure for contract state storage, facilitating data access and modification.
 
-### Structures:
+#### Testing Pattern
+Establishes a comprehensive testing framework including unit, fuzzing, and integration tests.
 
-- `badges`: ScorerBadge[] - List of badges available in the Scorer
-- `userScores`: mapping(address => uint256) - Mapping of user scores
+### Security Patterns
 
-### Main Functionalities:
+#### Check-Effects-Interactions Pattern
+Organizes operations in a secure sequence: validations, state modifications, and external interactions.
 
-- `calculateScore`: Calculates a user's score
-- `getUserScore`: Returns a user's current score
-- `addManager`: Adds a new manager to the Scorer
+#### Atomic Deployment
+Ensures system initialization occurs in a single atomic transaction, preventing invalid intermediate states and Front-Running.
 
-## General Features of Trustful Stellar
+## Development
 
-- Customizable comparison rules to adapt to the needs of each community
-- Digital badges issued to recognize user contributions
-- Reputation scores generated transparently and verifiably on the blockchain
-- Flexible system adaptable to various communities and projects on the Stellar network
+### Prerequisites
 
-## How to Use
+Before you begin, ensure you have the following tools installed:
+- Rust toolchain
+- Soroban CLI
 
-1. Deploy the Scorer Factory contract on the desired Stellar network.
-2. Use the Scorer Factory to create new Scorers as needed.
-3. Interact with individual Scorer contracts to manage scores.
-4. Use the Scorer Factory to obtain the list of all created Scorers, if necessary.
+### Build
 
-## Contributing
+To build the project, run the following command:
 
-Contributions are welcome! Please open an issue or pull request for suggestions for improvements or corrections.
+```bash
+cargo build --target wasm32-unknown-unknown --release
+```
 
-## License
+### Test
 
-[MIT License](LICENSE)
+To run the tests, use the following command:
+
+```bash
+cargo test --workspace
+```
+
