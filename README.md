@@ -58,16 +58,6 @@ Organizes operations in a secure sequence: validations, state modifications, and
 #### Atomic Deployment
 Ensures system initialization occurs in a single atomic transaction, preventing invalid intermediate states and Front-Running.
 
-## Scripts
-
--
--
--
--
--
--
-
-
 ## Development
 
 ### Prerequisites
