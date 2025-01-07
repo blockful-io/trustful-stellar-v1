@@ -1,5 +1,10 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String, Vec, symbol_short};
+
+// Event topics
+const TOPIC_USER: &str = "user";
+const TOPIC_MANAGER: &str = "manager";
+const TOPIC_UPGRADE: &str = "upgrade";
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -80,6 +85,12 @@ impl ScorerContract {
         let admin: Address = env.storage().persistent().get(&DataKey::ScorerCreator).unwrap();
         admin.require_auth();
         
+        // Emit event before upgrade
+        env.events().publish(
+            (TOPIC_UPGRADE, symbol_short!("wasm")),
+            new_wasm_hash.clone(),
+        );
+        
         env.deployer().update_current_contract_wasm(new_wasm_hash);
     }
 
@@ -132,8 +143,14 @@ impl ScorerContract {
             panic!("{:?}", Error::ManagerAlreadyExists);
         }
         
-        managers.push_back(new_manager);
+        managers.push_back(new_manager.clone());
         env.storage().persistent().set(&DataKey::Managers, &managers);
+
+        // Emit event for manager addition
+        env.events().publish(
+            (TOPIC_MANAGER, symbol_short!("add")),
+            (sender, new_manager),
+        );
     }
 
     /// Removes a manager from the contract
@@ -162,9 +179,14 @@ impl ScorerContract {
             managers.remove(index as u32);
             env.storage().persistent().set(&DataKey::Managers, &managers);
         }
+
+        // Emit event for manager removal
+        env.events().publish(
+            (TOPIC_MANAGER, symbol_short!("remove")),
+            (sender, manager_to_remove),
+        );
     }
 
-    
     /// Adds a new user to the contract's user registry
     /// 
     /// # Arguments
@@ -174,7 +196,6 @@ impl ScorerContract {
     /// # Authorization
     /// * Requires authorization from the user being added
     pub fn add_user(env: Env, sender: Address, user: Address) {
-
         sender.require_auth();
 
         // Check if sender is the user or a manager
@@ -184,8 +205,14 @@ impl ScorerContract {
         }
 
         let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
-        users.set(user, true);
+        users.set(user.clone(), true);
         env.storage().persistent().set(&DataKey::Users, &users);
+
+        // Emit event for user addition
+        env.events().publish(
+            (TOPIC_USER, symbol_short!("add")),
+            (sender, user),
+        );
     }
 
     /// Removes a user from the contract's user registry
@@ -211,8 +238,14 @@ impl ScorerContract {
         }
         
         let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
-        users.set(user, false);
+        users.set(user.clone(), false);
         env.storage().persistent().set(&DataKey::Users, &users);
+
+        // Emit event for user removal
+        env.events().publish(
+            (TOPIC_USER, symbol_short!("remove")),
+            (sender, user),
+        );
     }
 
     /// Retrieves the complete map of users and their status
