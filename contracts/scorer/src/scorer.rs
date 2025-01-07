@@ -290,7 +290,8 @@ mod test {
     } 
 
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::{Address as _, Events};
+    use soroban_sdk::{vec, IntoVal};
     fn setup_contract() -> (Env, Address, ScorerContractClient<'static>) {
         let env = Env::default();
         env.mock_all_auths();
@@ -335,11 +336,25 @@ mod test {
         let new_manager = Address::generate(&env);
         client.add_manager(&scorer_creator, &new_manager);
 
+        // Verify storage update
         let managers = env.as_contract(&client.address, || {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
-        
-        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone(), new_manager]));
+        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone(), new_manager.clone()]));
+
+        // Verify event emission
+
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (String::from_str(&env, TOPIC_MANAGER), symbol_short!("add")).into_val(&env),
+                    (scorer_creator, new_manager).into_val(&env)
+                ),
+            ]
+        );
     }
 
     #[test]
@@ -349,12 +364,29 @@ mod test {
         client.add_manager(&scorer_creator, &new_manager);
         client.remove_manager(&scorer_creator, &new_manager);
 
+        // Verify storage update
         let managers = env.as_contract(&client.address, || {
             env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap()
         });
-        
-        // Only scorer_creator should remain
-        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator]));
+        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone()]));
+
+        // Verify event emission
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (String::from_str(&env, TOPIC_MANAGER), symbol_short!("add")).into_val(&env),
+                    (scorer_creator.clone(), new_manager.clone()).into_val(&env)
+                ),
+                (
+                    client.address.clone(),
+                    (String::from_str(&env, TOPIC_MANAGER), symbol_short!("remove")).into_val(&env),
+                    (scorer_creator, new_manager).into_val(&env)
+                ),
+            ]
+        );
     }
 
     #[test]
@@ -409,7 +441,21 @@ mod test {
         let new_wasm_hash = env.deployer().upload_contract_wasm(old_contract::WASM);
         client.upgrade(&new_wasm_hash);
 
+        // Verify contract version
         assert_eq!(0, client.contract_version());
+
+        // Verify event emission
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (String::from_str(&env, TOPIC_UPGRADE), symbol_short!("wasm")).into_val(&env),
+                    new_wasm_hash.into_val(&env)
+                ),
+            ]
+        );
     }
 
     #[test]
@@ -423,14 +469,27 @@ mod test {
 
     #[test]
     fn test_add_user() {
-        let (env, scorer_creator, client) = setup_contract();
+        let (env, _scorer_creator, client) = setup_contract();
         let user = Address::generate(&env);
         
-        // User can add themselves
         client.add_user(&user, &user);
         
+        // Verify storage update
         let users = client.get_users();
         assert!(users.get(user.clone()).unwrap());
+
+        // Verify event emission
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (String::from_str(&env, TOPIC_USER), symbol_short!("add")).into_val(&env),
+                    (user.clone(), user).into_val(&env)
+                ),
+            ]
+        );
     }
 
     #[test]
@@ -465,14 +524,30 @@ mod test {
         let (env, _scorer_creator, client) = setup_contract();
         let user = Address::generate(&env);
         
-        // Add user first
         client.add_user(&user, &user);
-        
-        // User can remove themselves
         client.remove_user(&user, &user);
         
+        // Verify storage update
         let users = client.get_users();
         assert!(!users.get(user.clone()).unwrap());
+
+        // Verify event emission
+        assert_eq!(
+            env.events().all(),
+            vec![
+                &env,
+                (
+                    client.address.clone(),
+                    (String::from_str(&env, TOPIC_USER), symbol_short!("add")).into_val(&env),
+                    (user.clone(), user.clone()).into_val(&env)
+                ),
+                (
+                    client.address.clone(),
+                    (String::from_str(&env, TOPIC_USER), symbol_short!("remove")).into_val(&env),
+                    (user.clone(), user).into_val(&env)
+                ),
+            ]
+        );
     }
 
     #[test]
