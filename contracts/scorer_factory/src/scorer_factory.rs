@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Map, Address, Env, BytesN, Symbol, Val, Vec, symbol_short, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Map, Address, Env, BytesN, Symbol, Val, Vec, symbol_short};
 // use scorer::ScorerBadge;
 
 // Event topics
@@ -219,7 +219,7 @@ impl ScorerFactoryContract {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, IntoVal};
+    use soroban_sdk::testutils::Address as _;
     
     fn install_scorer_wasm(e: &Env) -> BytesN<32> {
         soroban_sdk::contractimport!(
@@ -244,20 +244,20 @@ mod test {
 
     #[test]
     fn test_initialize() {
-        let (env, scorer_factory_creator, scorer_factory_client) = setup_contract();
+        let (_env, scorer_factory_creator, scorer_factory_client) = setup_contract();
         assert!(scorer_factory_client.is_initialized());
         assert!(scorer_factory_client.is_scorer_factory_creator(&scorer_factory_creator));
     }
 
     #[test]
     fn test_is_manager() {
-        let (env, scorer_factory_creator, scorer_factory_client) = setup_contract();
+        let (_env, scorer_factory_creator, scorer_factory_client) = setup_contract();
         assert!(scorer_factory_client.is_manager(&scorer_factory_creator));
     }
 
     #[test]
     fn test_get_scorers() {
-        let (env, scorer_factory_creator, scorer_factory_client) = setup_contract();
+        let (_env, _scorer_factory_creator, scorer_factory_client) = setup_contract();
         let scorers = scorer_factory_client.get_scorers();
         assert!(scorers.len() == 0);
     }
