@@ -1,6 +1,6 @@
 use soroban_sdk::{
     testutils::{Address as _},
-    Address, Env, BytesN, Map, String, Vec, Val, Symbol,
+    Address, Env, BytesN, Map, String, Vec, Val, Symbol, symbol_short
  };
  use deployer::{Deployer, DeployerClient as DeployerContractClient}; 
  use scorer_factory::{ScorerFactoryContractClient, ScorerFactoryContract};
@@ -27,7 +27,7 @@ use soroban_sdk::{
  
  mod factory_tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, IntoVal};
+    use soroban_sdk::{testutils::{Address as _, Events}, IntoVal};
  
 
     fn setup_contract() -> (Env, Address, ScorerFactoryContractClient<'static>) {
@@ -73,6 +73,18 @@ use soroban_sdk::{
             
             assert!(!scorer_address.to_string().is_empty());
             
+            // Verify event emission
+            assert_eq!(
+                env.events().all(),
+                soroban_sdk::vec![
+                    &env,
+                    (
+                        scorer_factory_client.address.clone(),
+                        (String::from_str(&env, "scorer"), symbol_short!("create")).into_val(&env),
+                        (scorer_factory_creator, scorer_address).into_val(&env)
+                    ),
+                ]
+            );
         }
     
     #[test]
@@ -175,7 +187,7 @@ use soroban_sdk::{
  
  mod integration_tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, IntoVal};
+    use soroban_sdk::{testutils::{Address as _, Events}, IntoVal};
  
     #[test]
     fn test_integration() {
@@ -215,9 +227,20 @@ use soroban_sdk::{
         // Step 4: Check if admin is manager
         assert!(factory_client.is_manager(&admin));
 
-        // Step 5: Add a new manager
+        // Step 5: Add a new manager and verify event
         factory_client.add_manager(&admin, &new_manager);
         assert!(factory_client.is_manager(&new_manager));
+        assert_eq!(
+            env.events().all(),
+            soroban_sdk::vec![
+                &env,
+                (
+                    factory_client.address.clone(),
+                    (String::from_str(&env, "manager"), symbol_short!("add")).into_val(&env),
+                    (admin.clone(), new_manager.clone()).into_val(&env)
+                )
+            ]
+        );
 
         // Step 6: Create a scorer contract
         let salt = BytesN::from_array(&env, &[1; 32]);
@@ -287,10 +310,14 @@ use soroban_sdk::{
         assert_eq!(scorers.len(), 2);
         assert!(scorers.get(new_scorer_address.clone()).unwrap());
 
-        // Step 12: Remove manager
+        // Step 12: Remove manager and verify event
         factory_client.remove_manager(&admin, &new_manager);
         assert!(!factory_client.is_manager(&new_manager));
-
+        assert!(env.events().all().contains(&(
+            factory_client.address.clone(),
+            (String::from_str(&env, "manager"), symbol_short!("remove")).into_val(&env),
+            (admin.clone(), new_manager.clone()).into_val(&env)
+        )));
 
         // Step 13: Add user to scorer
         let user = Address::generate(&env);
