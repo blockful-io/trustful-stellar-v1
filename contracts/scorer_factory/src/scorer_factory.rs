@@ -1,6 +1,10 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Map, Address, Env, BytesN, Symbol, Val, Vec, symbol_short, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Map, Address, Env, BytesN, Symbol, Val, Vec, symbol_short};
 // use scorer::ScorerBadge;
+
+// Event topics
+const TOPIC_SCORER: &str = "scorer";
+const TOPIC_MANAGER: &str = "manager"; 
 
 #[contracttype]
 enum DataKey {
@@ -126,7 +130,7 @@ impl ScorerFactoryContract {
         // Deploy the contract using the stored Wasm hash
         let scorer_address = env
             .deployer()
-            .with_address(deployer, salt)
+            .with_address(deployer.clone(), salt)
             .deploy(wasm_hash);
 
         // Initialize the contract
@@ -139,6 +143,8 @@ impl ScorerFactoryContract {
             .unwrap_or_else(|| Map::new(&env));
         created_scorers.set(scorer_address.clone(), true);
         env.storage().persistent().set(&DataKey::CreatedScorers, &created_scorers);
+
+        env.events().publish((TOPIC_SCORER, symbol_short!("create")), (deployer, scorer_address.clone()));
 
         scorer_address
     }
@@ -169,7 +175,7 @@ impl ScorerFactoryContract {
 
         // Verify caller is factory creator or a manager
         if !Self::is_scorer_factory_creator(env.clone(), caller.clone()) 
-            && !Self::is_manager(env.clone(), caller) {
+            && !Self::is_manager(env.clone(), caller.clone()) {
             panic!("{:?}", Error::Unauthorized);
         }
 
@@ -178,6 +184,8 @@ impl ScorerFactoryContract {
             .unwrap_or(Map::new(&env));
         managers.set(manager.clone(), true);
         env.storage().persistent().set(&DataKey::Managers, &managers);
+
+        env.events().publish((TOPIC_MANAGER, symbol_short!("add")), (caller, manager));
     }
     
     /// Removes a manager from the contract by setting their status to false
@@ -195,7 +203,7 @@ impl ScorerFactoryContract {
 
         // Verify caller is factory creator or a manager
         if !Self::is_scorer_factory_creator(env.clone(), caller.clone()) 
-            && !Self::is_manager(env.clone(), caller) {
+            && !Self::is_manager(env.clone(), caller.clone()) {
             panic!("{:?}", Error::Unauthorized);
         }
 
@@ -204,13 +212,14 @@ impl ScorerFactoryContract {
             .unwrap_or(Map::new(&env));
         managers.set(manager.clone(), false);
         env.storage().persistent().set(&DataKey::Managers, &managers);
+        env.events().publish((TOPIC_MANAGER, symbol_short!("remove")), (caller, manager));
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, IntoVal};
+    use soroban_sdk::testutils::Address as _;
     
     fn install_scorer_wasm(e: &Env) -> BytesN<32> {
         soroban_sdk::contractimport!(
@@ -235,20 +244,20 @@ mod test {
 
     #[test]
     fn test_initialize() {
-        let (env, scorer_factory_creator, scorer_factory_client) = setup_contract();
+        let (_env, scorer_factory_creator, scorer_factory_client) = setup_contract();
         assert!(scorer_factory_client.is_initialized());
         assert!(scorer_factory_client.is_scorer_factory_creator(&scorer_factory_creator));
     }
 
     #[test]
     fn test_is_manager() {
-        let (env, scorer_factory_creator, scorer_factory_client) = setup_contract();
+        let (_env, scorer_factory_creator, scorer_factory_client) = setup_contract();
         assert!(scorer_factory_client.is_manager(&scorer_factory_creator));
     }
 
     #[test]
     fn test_get_scorers() {
-        let (env, scorer_factory_creator, scorer_factory_client) = setup_contract();
+        let (_env, _scorer_factory_creator, scorer_factory_client) = setup_contract();
         let scorers = scorer_factory_client.get_scorers();
         assert!(scorers.len() == 0);
     }
