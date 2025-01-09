@@ -155,4 +155,62 @@ echo "DEPLOYMENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> .deploy/factory.env
 
 echo -e "${GREEN}Factory deployment successful!${NC}"
 echo "Factory Address: $FACTORY_ADDRESS"
-echo "Deployment information saved to .deploy/factory.env" 
+echo "Deployment information saved to .deploy/factory.env"
+
+# Add manager
+echo -e "${YELLOW}Adding manager...${NC}"
+ADD_MANAGER_RESULT=$(stellar contract invoke \
+    --id "$FACTORY_ADDRESS" \
+    --source "$SOURCE_KEY" \
+    --network "$NETWORK" \
+    -- \
+    add_manager \
+    --caller "$ADMIN_ADDRESS" \
+    --manager "$ADMIN_ADDRESS")
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Failed to add manager${NC}"
+    echo "$ADD_MANAGER_RESULT"
+    exit 1
+fi
+
+echo -e "${GREEN}Successfully added manager${NC}"
+
+# Remove manager
+echo -e "${YELLOW}Removing manager...${NC}"
+REMOVE_MANAGER_RESULT=$(stellar contract invoke \
+    --id "$FACTORY_ADDRESS" \
+    --source "$SOURCE_KEY" \
+    --network "$NETWORK" \
+    -- \
+    remove_manager \
+    --caller "$ADMIN_ADDRESS" \
+    --manager "$ADMIN_ADDRESS")
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Failed to remove manager${NC}"
+    echo "$REMOVE_MANAGER_RESULT"
+    exit 1
+fi
+
+echo -e "${GREEN}Successfully removed manager${NC}" 
+
+
+# Add manager
+echo -e "${YELLOW}Adding manager...${NC}"
+ADD_MANAGER_RESULT=$(stellar contract invoke \
+    --id "$FACTORY_ADDRESS" \
+    --source "$SOURCE_KEY" \
+    --network "$NETWORK" \
+    -- \
+    add_manager \
+    --caller "$ADMIN_ADDRESS" \
+    --manager "$ADMIN_ADDRESS")
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Error: Failed to add manager${NC}"
+    echo "$ADD_MANAGER_RESULT"
+    exit 1
+fi
+
+echo -e "${GREEN}Successfully added manager${NC}"
