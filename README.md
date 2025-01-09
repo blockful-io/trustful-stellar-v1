@@ -82,3 +82,61 @@ To run the tests, use the following command:
 cargo test --workspace
 ```
 
+## Deployment Setup
+
+### Prerequisites
+
+1. Install the Stellar CLI. You can do this via Homebrew:
+```bash
+brew install stellar-cli
+```
+
+Or using Cargo:
+```bash
+cargo install --locked stellar-cli@22.1.0 --features opt
+```
+
+### Initial Setup
+
+1. Generate a test account (this example uses 'alice' as the account name):
+```bash
+stellar keys generate --global alice --network testnet --fund
+```
+
+You can verify the address was created with:
+```bash
+stellar keys address alice
+```
+
+2. Make the scripts executable:
+```bash
+chmod +x scripts/deploy_deployer.sh
+chmod +x scripts/deploy_factory.sh
+chmod +x scripts/create_scorer.sh
+chmod +x scripts/add_user_manager.sh
+```
+
+### Deployment Steps
+
+1. Deploy the deployer contract:
+```bash
+./scripts/deploy_deployer.sh -n testnet -s alice
+```
+
+2. Deploy the factory contract:
+```bash
+./scripts/deploy_factory.sh -n testnet -s alice
+```
+
+3. Create a scorer instance:
+```bash
+./scripts/create_scorer.sh -s alice -n testnet
+```
+
+4. Add/remove users and managers (requires two accounts):
+```bash
+./scripts/add_user_manager.sh -s alice -t bob -n testnet
+```
+
+Note: Replace `alice` and `bob` with your actual account names. The source account (`-s`) should be the admin account that deployed the contracts, while the target account (`-t`) is the account you want to add as a user/manager.
+
