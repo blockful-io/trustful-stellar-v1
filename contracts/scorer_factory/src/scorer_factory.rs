@@ -214,6 +214,29 @@ impl ScorerFactoryContract {
         env.storage().persistent().set(&DataKey::Managers, &managers);
         env.events().publish((TOPIC_MANAGER, symbol_short!("remove")), (caller, manager));
     }
+
+
+    /// Retrieves all the managers from the contract.
+    ///
+    /// # Returns
+    /// * A map of addresses to their manager status (true or false).
+    ///
+    /// # Panics
+    /// * This function panic if there is no manager object.
+    pub fn get_managers(env: Env){
+        env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Managers).unwrap();
+    }
+
+    /// Retrieves the address of the contract creator.
+    ///
+    /// # Returns
+    /// * The address of the scorer factory creator.
+    ///
+    /// # Panics
+    /// * This function will panic if the creator's address is not found in storage.
+    pub fn get_contract_creator(env: Env){
+        env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerFactoryCreator).unwrap();
+    }
 }
 
 #[cfg(test)]
