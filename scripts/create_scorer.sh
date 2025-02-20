@@ -89,7 +89,7 @@ SALT=$(openssl rand -hex 32)
 BADGE_MAP="[[{\"u32\":1},{\"vec\":[{\"string\":\"Initial Badge\"},{\"address\":\"$ADMIN_ADDRESS\"},{\"u32\":100}]}]]"
 
 # Create the init args
-INIT_ARGS="[{\"address\":\"$ADMIN_ADDRESS\"},{\"map\":$BADGE_MAP}]"
+INIT_ARGS="[{\"address\":\"$ADMIN_ADDRESS\"},{\"map\":$BADGE_MAP},{\"string\":\"New Scorer\"},{\"string\":\"This is a new scorer contract\"}]"
 
 # Create the scorer contract
 echo -e "${YELLOW}Creating scorer contract...${NC}"
