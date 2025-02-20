@@ -22,6 +22,9 @@ enum Error {
     Unauthorized,
     ManagerAlreadyExists,
     ManagerNotFound,
+    ManagersNotFound,
+    ContractCreatorNotFound,
+    ScorersWereNotFound
 }
 
 #[contract]
@@ -46,13 +49,14 @@ impl ScorerFactoryContract {
         }
         scorer_creator.require_auth();
 
-        let mut managers = Map::<Address, bool>::new(&env);
-        managers.set(scorer_creator.clone(), true);
+        let mut managers = Vec::<Address>::new(&env);
+        managers.push_back(scorer_creator.clone());
         
         env.storage().persistent().set(&DataKey::Initialized, &true);
         env.storage().persistent().set(&DataKey::ScorerFactoryCreator, &scorer_creator);
         env.storage().persistent().set(&DataKey::Managers, &managers);
         env.storage().persistent().set(&DataKey::ScorerWasmHash, &scorer_wasm_hash);
+        env.storage().persistent().set(&DataKey::CreatedScorers, &Map::<Address, bool>::new(&env));
     }
 
     /// Checks if the contract has been initialized
@@ -86,7 +90,7 @@ impl ScorerFactoryContract {
     /// # Returns
     /// * `bool` - True if the address is a manager, false otherwise
     pub fn is_manager(env: Env, address: Address) -> bool {
-        env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Managers).unwrap().get(address).unwrap_or(false)
+        return env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap().contains(address);
     }
 
     /// Deploy a new scorer contract
@@ -157,7 +161,7 @@ impl ScorerFactoryContract {
     /// # Returns
     /// * `Map<Address, bool>` - A map where keys are scorer contract addresses and values are always true
     pub fn get_scorers(env: Env) -> Map<Address, bool> {
-        env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::CreatedScorers).unwrap_or(Map::new(&env))
+        return env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::CreatedScorers).unwrap_or_else(|| panic!("{:?}", Error::ScorersWereNotFound));
     }
 
     /// Adds a new manager to the contract
@@ -180,9 +184,9 @@ impl ScorerFactoryContract {
         }
 
         let mut managers = env.storage().persistent()
-            .get::<DataKey, Map<Address, bool>>(&DataKey::Managers)
-            .unwrap_or(Map::new(&env));
-        managers.set(manager.clone(), true);
+            .get::<DataKey, Vec<Address>>(&DataKey::Managers)
+            .unwrap_or(Vec::new(&env));
+        managers.push_back(manager.clone());
         env.storage().persistent().set(&DataKey::Managers, &managers);
 
         env.events().publish((TOPIC_MANAGER, symbol_short!("add")), (caller, manager));
@@ -208,11 +212,34 @@ impl ScorerFactoryContract {
         }
 
         let mut managers = env.storage().persistent()
-            .get::<DataKey, Map<Address, bool>>(&DataKey::Managers)
-            .unwrap_or(Map::new(&env));
-        managers.set(manager.clone(), false);
+            .get::<DataKey, Vec<Address>>(&DataKey::Managers)
+            .unwrap_or(Vec::new(&env));
+        managers.push_back(manager.clone());
         env.storage().persistent().set(&DataKey::Managers, &managers);
         env.events().publish((TOPIC_MANAGER, symbol_short!("remove")), (caller, manager));
+    }
+
+
+    /// Retrieves all the managers from the contract.
+    ///
+    /// # Returns
+    /// * A map of addresses to their manager status (true or false).
+    ///
+    /// # Panics
+    /// * This function panic if there is no manager object.
+    pub fn get_managers(env: Env) -> Vec<Address>{
+        return env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap_or_else(|| panic!("{:?}", Error::ManagersNotFound));
+    }
+
+    /// Retrieves the address of the contract creator.
+    ///
+    /// # Returns
+    /// * The address of the scorer factory creator.
+    ///
+    /// # Panics
+    /// * This function will panic if the creator's address is not found in storage.
+    pub fn get_contract_creator(env: Env) -> Address{
+        return env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerFactoryCreator).unwrap_or_else(|| panic!("{:?}", Error::ContractCreatorNotFound));
     }
 }
 
