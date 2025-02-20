@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, Map, String, Vec, symbol_short};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Vec};
 
 // Event topics
 const TOPIC_USER: &str = "user";
@@ -33,6 +33,8 @@ enum Error {
     Unauthorized,
     ManagerAlreadyExists,
     ManagerNotFound,
+    ManagersNotFound,
+    ScorerCreatorDoesNotExist,
 }
 
 #[contractimpl]
@@ -281,8 +283,8 @@ impl ScorerContract {
     ///
     /// # Panics
     /// * This function panic if there is no manager object.
-    pub fn get_managers(env: Env){
-        env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Managers).unwrap();
+    pub fn get_managers(env: Env) -> Vec<Address>{
+        return env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap_or_else(|| panic!("{:?}", Error::ManagersNotFound));
     }
 
     /// Retrieves the address of the contract creator.
@@ -292,8 +294,8 @@ impl ScorerContract {
     ///
     /// # Panics
     /// * This function will panic if the creator's address is not found in storage.
-    pub fn get_contract_owner(env: Env){
-        env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap();
+    pub fn get_contract_owner(env: Env) -> Address{
+        return env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorDoesNotExist));
     }
 }
 
@@ -629,16 +631,16 @@ mod test {
 
         // Verify storage update
         let managers = client.get_managers();
-        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone(), new_manager_1.clone(), new_manager_2.clone()]));
+        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone(), new_manager_1, new_manager_2]));
     }
 
     #[test]
-    fn test_get_ScorerCreator() {
-        let (env, scorer_creator, client) = setup_contract();
+    fn test_get_scorer_creator() {
+        let (_, scorer_creator, client) = setup_contract();
 
         // Verify storage update
         let owner = client.get_contract_owner();
-        assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator]));
+        assert_eq!(owner, scorer_creator);
     }
 
 }   
