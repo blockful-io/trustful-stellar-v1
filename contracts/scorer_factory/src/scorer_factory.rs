@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Map, Address, Env, BytesN, Symbol, Val, Vec, symbol_short};
+use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Symbol, Val, Vec, FromVal};
 // use scorer::ScorerBadge;
 
 // Event topics
@@ -56,7 +56,7 @@ impl ScorerFactoryContract {
         env.storage().persistent().set(&DataKey::ScorerFactoryCreator, &scorer_creator);
         env.storage().persistent().set(&DataKey::Managers, &managers);
         env.storage().persistent().set(&DataKey::ScorerWasmHash, &scorer_wasm_hash);
-        env.storage().persistent().set(&DataKey::CreatedScorers, &Map::<Address, bool>::new(&env));
+        env.storage().persistent().set(&DataKey::CreatedScorers, &Map::<Address, (String, String)>::new(&env));
     }
 
     /// Checks if the contract has been initialized
@@ -138,17 +138,22 @@ impl ScorerFactoryContract {
             .deploy(wasm_hash);
 
         // Initialize the contract
-        let _: () = env.invoke_contract(&scorer_address, &init_fn, init_args);
+        let _: () = env.invoke_contract(&scorer_address, &init_fn, init_args.clone());
         
         // Record the created scorer
         let mut created_scorers = env.storage()
             .persistent()
-            .get::<DataKey, Map<Address, bool>>(&DataKey::CreatedScorers)
+            .get::<DataKey, Map<Address, (String, String)>>(&DataKey::CreatedScorers)
             .unwrap_or_else(|| Map::new(&env));
-        created_scorers.set(scorer_address.clone(), true);
-        env.storage().persistent().set(&DataKey::CreatedScorers, &created_scorers);
 
-        env.events().publish((TOPIC_SCORER, symbol_short!("create")), (deployer, scorer_address.clone()));
+        // Extract name and description from init_args
+        let args_len = init_args.len();
+        let scorer_description = String::from_val(&env, &init_args.get(args_len - 1).unwrap());
+        let scorer_name = String::from_val(&env, &init_args.get(args_len - 2).unwrap());
+            
+        created_scorers.set(scorer_address.clone(), (scorer_name.clone(), scorer_description.clone()));
+        env.storage().persistent().set(&DataKey::CreatedScorers, &created_scorers);
+        env.events().publish((TOPIC_SCORER, symbol_short!("create")), (deployer, scorer_address.clone(), scorer_name, scorer_description));
 
         scorer_address
     }
@@ -160,8 +165,8 @@ impl ScorerFactoryContract {
     /// 
     /// # Returns
     /// * `Map<Address, bool>` - A map where keys are scorer contract addresses and values are always true
-    pub fn get_scorers(env: Env) -> Map<Address, bool> {
-        return env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::CreatedScorers).unwrap_or_else(|| panic!("{:?}", Error::ScorersWereNotFound));
+    pub fn get_scorers(env: Env) -> Map<Address, (String, String)> {
+        return env.storage().persistent().get::<DataKey, Map<Address, (String, String)>>(&DataKey::CreatedScorers).unwrap_or_else(|| panic!("{:?}", Error::ScorersWereNotFound));
     }
 
     /// Adds a new manager to the contract
@@ -214,7 +219,19 @@ impl ScorerFactoryContract {
         let mut managers = env.storage().persistent()
             .get::<DataKey, Vec<Address>>(&DataKey::Managers)
             .unwrap_or(Vec::new(&env));
-        managers.push_back(manager.clone());
+
+        let mut index_to_remove: Option<u32> = None;
+        for i in 0..managers.len() {
+            if managers.get(i).unwrap() == manager {
+                index_to_remove = Some(i);
+                break;
+            }
+        }
+        
+        if let Some(idx) = index_to_remove {
+            managers.remove(idx);
+        }
+        
         env.storage().persistent().set(&DataKey::Managers, &managers);
         env.events().publish((TOPIC_MANAGER, symbol_short!("remove")), (caller, manager));
     }
