@@ -21,6 +21,8 @@ enum DataKey {
     Users,
     Managers,
     Initialized,
+    Name,
+    Description
 }
 
 #[contract]
@@ -40,7 +42,7 @@ enum Error {
 #[contractimpl]
 impl ScorerContract {
     /// Contract constructor
-    pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<u32, ScorerBadge>) {
+    pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<u32, ScorerBadge>, name: String, description: String) {
         
         // Ensure that the contract is not initialized
         if Self::is_initialized(&env) {
@@ -60,6 +62,9 @@ impl ScorerContract {
         env.storage().persistent().set(&DataKey::Users, &Map::<Address, bool>::new(&env));
         env.storage().persistent().set(&DataKey::Managers, &initial_managers);
         env.storage().persistent().set(&DataKey::Initialized, &true);
+        env.storage().persistent().set(&DataKey::Name, &name);
+        env.storage().persistent().set(&DataKey::Description, &description);
+
     }
 
     
@@ -335,7 +340,7 @@ mod test {
         let scorer_client = ScorerContractClient::new(&env, &scorer_contract_id);
 
         // Initialize contract
-        scorer_client.initialize(&scorer_creator, &scorer_badges);
+        scorer_client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."));
 
         (env, scorer_creator, scorer_client)
     }
@@ -351,7 +356,7 @@ mod test {
         let (env, scorer_creator, client) = setup_contract();
         let scorer_badges = Map::new(&env);
         
-        client.initialize(&scorer_creator, &scorer_badges);
+        client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."));
     }
 
     #[test]
