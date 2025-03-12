@@ -5,6 +5,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, B
 const TOPIC_USER: &str = "user";
 const TOPIC_MANAGER: &str = "manager";
 const TOPIC_UPGRADE: &str = "upgrade";
+const TOPIC_INIT: &str = "init";
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -67,6 +68,11 @@ impl ScorerContract {
         env.storage().persistent().set(&DataKey::Name, &name);
         env.storage().persistent().set(&DataKey::Description, &description);
 
+        // Emit a initialization event
+        env.events().publish(
+            (TOPIC_INIT, symbol_short!("contract")),
+            (scorer_creator, initial_managers, scorer_badges, name, description),
+        );
     }
 
     
