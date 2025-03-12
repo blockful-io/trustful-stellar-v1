@@ -209,7 +209,8 @@ impl ScorerContract {
 
         let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
 
-        if users.get(user.clone()).unwrap_or(false) {
+        // Check if user already exists and is active
+        if users.contains_key(user.clone()) && users.get(user.clone()).unwrap() {
             panic!("{:?}", Error::UserAlreadyExist);
         }
 
@@ -233,13 +234,14 @@ impl ScorerContract {
     /// * Requires authorization from the user
     /// 
     /// # Panics
-    /// * If the user does not exist
+    /// * If the user does not exist or is already inactive
     pub fn remove_user(env: Env, user: Address) {
         user.require_auth();
         
         let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
 
-        if !users.get(user.clone()).unwrap_or(true) {
+        // Check if user doesn't exist or is already inactive
+        if !users.contains_key(user.clone()) || !users.get(user.clone()).unwrap() {
             panic!("{:?}", Error::UserDoesNotExist);
         }
         
