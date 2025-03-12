@@ -6,6 +6,7 @@ const TOPIC_USER: &str = "user";
 const TOPIC_MANAGER: &str = "manager";
 const TOPIC_UPGRADE: &str = "upgrade";
 const TOPIC_INIT: &str = "init";
+const TOPIC_BADGE: &str = "badge";
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -307,6 +308,79 @@ impl ScorerContract {
     /// * This function will panic if the creator's address is not found in storage.
     pub fn get_contract_owner(env: Env) -> Address{
         return env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorDoesNotExist));
+    }
+
+    /// Adds a new badge to the contract
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `sender` - The address of the account attempting to add the badge
+    /// * `badge_id` - The ID for the new badge
+    /// * `badge` - The ScorerBadge struct containing badge details
+    /// 
+    /// # Panics
+    /// * If the sender is not a manager
+    /// * If a badge with the given ID already exists
+    pub fn add_badge(env: Env, sender: Address, badge_address: u32, badge: ScorerBadge) {
+        sender.require_auth();
+        
+        // Check if sender is a manager
+        let (is_manager, _) = Self::manager_exists(&env, &sender);
+        if !is_manager {
+            panic!("{:?}", Error::Unauthorized);
+        }
+        
+        let mut badges = env.storage().persistent().get::<DataKey, Map<u32, ScorerBadge>>(&DataKey::ScorerBadges).unwrap();
+        
+        // Check if badge with this ID already exists
+        if badges.contains_key(badge_address) {
+            panic!("Badge ID already exists");
+        }
+        
+        badges.set(badge_address, badge.clone());
+        env.storage().persistent().set(&DataKey::ScorerBadges, &badges);
+        
+        env.events().publish(
+            (TOPIC_BADGE, symbol_short!("add")),
+            (badge_address, badge, sender),
+        );
+    }
+
+    /// Removes a badge from the contract
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `sender` - The address of the account attempting to remove the badge
+    /// * `badge_id` - The ID of the badge to remove
+    /// 
+    /// # Panics
+    /// * If the sender is not a manager
+    /// * If the badge with the given ID doesn't exist
+    pub fn remove_badge(env: Env, sender: Address, badge_address: u32) {
+        sender.require_auth();
+        
+        // Check if sender is a manager
+        let (is_manager, _) = Self::manager_exists(&env, &sender);
+        if !is_manager {
+            panic!("{:?}", Error::Unauthorized);
+        }
+        
+        let mut badges = env.storage().persistent().get::<DataKey, Map<u32, ScorerBadge>>(&DataKey::ScorerBadges).unwrap();
+        
+        // Check if badge exists
+        if !badges.contains_key(badge_address) {
+            panic!("Badge ID does not exist");
+        }
+        
+        let badge = badges.get(badge_address).unwrap();
+        
+        badges.remove(badge_address);
+        env.storage().persistent().set(&DataKey::ScorerBadges, &badges);
+        
+        env.events().publish(
+            (TOPIC_BADGE, symbol_short!("remove")),
+            (badge_address, badge, sender),
+        );
     }
 }
 
