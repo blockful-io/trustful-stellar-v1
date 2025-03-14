@@ -343,20 +343,20 @@ use soroban_sdk::{
 
         // Step 13: Add user to scorer
         let user = Address::generate(&env);
-        scorer_client.add_user(&admin, &user);
+        scorer_client.add_user(&user);
         assert!(scorer_client.get_users().contains_key(user.clone()));
 
         // Step 14: Verify user can add themselves to another scorer
         let new_scorer_client = ScorerContractClient::new(&env, &new_scorer_address);
-        new_scorer_client.add_user(&user, &user);
+        new_scorer_client.add_user(&user);
         assert!(new_scorer_client.get_users().contains_key(user.clone()));
 
         // Step 15: Remove user from first scorer
-        scorer_client.remove_user(&admin, &user);
+        scorer_client.remove_user(&user);
         assert_eq!(scorer_client.get_users().get(user.clone()), Some(false));
 
         // Step 16: Verify user can remove themselves from second scorer
-        new_scorer_client.remove_user(&user, &user);
+        new_scorer_client.remove_user(&user);
         assert_eq!(new_scorer_client.get_users().get(user.clone()), Some(false));
 
 

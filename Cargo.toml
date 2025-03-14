@@ -57,7 +57,12 @@ include = [
 
 [package.metadata.scripts]
 build-wasm = """
-cargo build --target wasm32-unknown-unknown --release -p scorer
-cargo build --target wasm32-unknown-unknown --release -p deployer
-cargo build --target wasm32-unknown-unknown --release -p scorer_factory
+RUSTFLAGS='-C target-feature=-reference-types' cargo build --target wasm32-unknown-unknown --release -p scorer
+RUSTFLAGS='-C target-feature=-reference-types' cargo build --target wasm32-unknown-unknown --release -p deployer
+RUSTFLAGS='-C target-feature=-reference-types' cargo build --target wasm32-unknown-unknown --release -p scorer_factory
+
+mkdir -p wasm
+cp target/wasm32-unknown-unknown/release/scorer.wasm wasm/
+cp target/wasm32-unknown-unknown/release/deployer.wasm wasm/
+cp target/wasm32-unknown-unknown/release/scorer_factory.wasm wasm/
 """

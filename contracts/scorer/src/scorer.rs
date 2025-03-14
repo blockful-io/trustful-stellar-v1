@@ -37,6 +37,8 @@ enum Error {
     ManagerNotFound,
     ManagersNotFound,
     ScorerCreatorDoesNotExist,
+    UserAlreadyExist,
+    UserDoesNotExist,
 }
 
 #[contractimpl]
@@ -202,23 +204,23 @@ impl ScorerContract {
     /// 
     /// # Authorization
     /// * Requires authorization from the user being added
-    pub fn add_user(env: Env, sender: Address, user: Address) {
-        sender.require_auth();
-
-        // Check if sender is the user or a manager
-        let (is_manager, _) = Self::manager_exists(&env, &sender);
-        if sender != user && !is_manager {
-            panic!("{:?}", Error::Unauthorized);
-        }
+    pub fn add_user(env: Env, user: Address) {
+        user.require_auth();
 
         let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
+
+        // Check if user already exists and is active
+        if users.contains_key(user.clone()) && users.get(user.clone()).unwrap() {
+            panic!("{:?}", Error::UserAlreadyExist);
+        }
+
         users.set(user.clone(), true);
         env.storage().persistent().set(&DataKey::Users, &users);
 
         // Emit event for user addition
         env.events().publish(
             (TOPIC_USER, symbol_short!("add")),
-            (sender, user),
+            user,
         );
     }
 
@@ -226,32 +228,30 @@ impl ScorerContract {
     /// 
     /// # Arguments
     /// * `env` - The environment object providing access to the contract's storage
-    /// * `sender` - The address of the account attempting to remove the user
     /// * `user` - The address of the user to be removed
     /// 
     /// # Authorization
-    /// * Requires authorization from the sender
-    /// * Sender must be either the user themselves or a manager
+    /// * Requires authorization from the user
     /// 
     /// # Panics
-    /// * If the sender is neither the user nor a manager
-    pub fn remove_user(env: Env, sender: Address, user: Address) {
-        sender.require_auth();
-        
-        // Check if sender is the user or a manager
-        let (is_manager, _) = Self::manager_exists(&env, &sender);
-        if sender != user && !is_manager {
-            panic!("{:?}", Error::Unauthorized);
-        }
+    /// * If the user does not exist or is already inactive
+    pub fn remove_user(env: Env, user: Address) {
+        user.require_auth();
         
         let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
+
+        // Check if user doesn't exist or is already inactive
+        if !users.contains_key(user.clone()) || !users.get(user.clone()).unwrap() {
+            panic!("{:?}", Error::UserDoesNotExist);
+        }
+        
         users.set(user.clone(), false);
         env.storage().persistent().set(&DataKey::Users, &users);
 
         // Emit event for user removal
         env.events().publish(
             (TOPIC_USER, symbol_short!("remove")),
-            (sender, user),
+            user,
         );
     }
 
@@ -501,7 +501,7 @@ mod test {
         let (env, _scorer_creator, client) = setup_contract();
         let user = Address::generate(&env);
         
-        client.add_user(&user, &user);
+        client.add_user(&user);
         
         // Verify storage update
         let users = client.get_users();
@@ -515,7 +515,7 @@ mod test {
                 (
                     client.address.clone(),
                     (String::from_str(&env, TOPIC_USER), symbol_short!("add")).into_val(&env),
-                    (user.clone(), user).into_val(&env)
+                    user.into_val(&env)
                 ),
             ]
         );
@@ -530,22 +530,24 @@ mod test {
         // Add manager first
         client.add_manager(&scorer_creator, &manager);
         
-        // Manager can add a user
-        client.add_user(&manager, &user);
+        // User adds themselves
+        client.add_user(&user);
         
         let users = client.get_users();
         assert!(users.get(user.clone()).unwrap());
     }
 
     #[test]
-    #[should_panic(expected = "Unauthorized")]
+    #[should_panic(expected = "UserAlreadyExist")]
     fn test_unauthorized_add_user() {
         let (env, _scorer_creator, client) = setup_contract();
-        let unauthorized = Address::generate(&env);
         let user = Address::generate(&env);
         
-        // Unauthorized address cannot add users
-        client.add_user(&unauthorized, &user);
+        // First add the user
+        client.add_user(&user);
+        
+        // Try to add the same user again - should panic with UserAlreadyExist
+        client.add_user(&user);
     }
 
     #[test]
@@ -553,8 +555,8 @@ mod test {
         let (env, _scorer_creator, client) = setup_contract();
         let user = Address::generate(&env);
         
-        client.add_user(&user, &user);
-        client.remove_user(&user, &user);
+        client.add_user(&user);
+        client.remove_user(&user);
         
         // Verify storage update
         let users = client.get_users();
@@ -568,12 +570,12 @@ mod test {
                 (
                     client.address.clone(),
                     (String::from_str(&env, TOPIC_USER), symbol_short!("add")).into_val(&env),
-                    (user.clone(), user.clone()).into_val(&env)
+                    user.into_val(&env)
                 ),
                 (
                     client.address.clone(),
                     (String::from_str(&env, TOPIC_USER), symbol_short!("remove")).into_val(&env),
-                    (user.clone(), user).into_val(&env)
+                    user.into_val(&env)
                 ),
             ]
         );
@@ -587,27 +589,27 @@ mod test {
         
         // Setup: Add manager and user
         client.add_manager(&scorer_creator, &manager);
-        client.add_user(&user, &user);
+        client.add_user(&user);
         
         // Manager can remove user
-        client.remove_user(&manager, &user);
+        client.remove_user(&user);
         
         let users = client.get_users();
         assert!(!users.get(user.clone()).unwrap());
     }
 
     #[test]
-    #[should_panic(expected = "Unauthorized")]
+    #[should_panic(expected = "UserDoesNotExist")]
     fn test_unauthorized_remove_user() {
         let (env, _scorer_creator, client) = setup_contract();
-        let unauthorized = Address::generate(&env);
         let user = Address::generate(&env);
         
         // Add user first
-        client.add_user(&user, &user);
-        
+        client.add_user(&user);
+        client.remove_user(&user);
+
         // Unauthorized address cannot remove users
-        client.remove_user(&unauthorized, &user);
+        client.remove_user(&user);
     }
 
     #[test]
@@ -617,8 +619,8 @@ mod test {
         let user2 = Address::generate(&env);
         
         // Add two users
-        client.add_user(&user1, &user1);
-        client.add_user(&user2, &user2);
+        client.add_user(&user1);
+        client.add_user(&user2);
         
         let users = client.get_users();
         assert!(users.get(user1.clone()).unwrap());
