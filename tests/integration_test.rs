@@ -57,6 +57,7 @@ use soroban_sdk::{
                 name: String::from_str(&env, "Test Badge"),
                 issuer: scorer_factory_creator.clone(),
                 score: 100,
+                icon: String::from_str(&env, "badge_icon.png"),
             };
             scorer_badges.set(1, badge);
             let mut init_args: Vec<Val> = Vec::new(&env);
@@ -139,6 +140,7 @@ use soroban_sdk::{
             name: String::from_str(&env, "Test Badge"),
             issuer: unauthorized_address.clone(),
             score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         scorer_badges.set(1, badge);
         
@@ -172,6 +174,7 @@ use soroban_sdk::{
             name: String::from_str(&env, "Test Badge"),
             issuer: scorer_factory_creator.clone(),
             score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         scorer_badges.set(1, badge);
         let mut init_args: Vec<Val> = Vec::new(&env);
@@ -263,6 +266,7 @@ use soroban_sdk::{
             name: String::from_str(&env, "Test Badge"),
             issuer: admin.clone(),
             score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         scorer_badges.set(1, badge);
         
@@ -308,6 +312,7 @@ use soroban_sdk::{
             name: String::from_str(&env, "Manager Badge"),
             issuer: new_manager.clone(),
             score: 200,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         new_scorer_badges.set(1, new_badge);
         
@@ -407,6 +412,7 @@ use soroban_sdk::{
             name: String::from_str(&env, "Unauthorized Badge"),
             issuer: manager_to_remove.clone(),
             score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         scorer_badges.set(1, badge);
         
