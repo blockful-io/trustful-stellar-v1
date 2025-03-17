@@ -14,6 +14,7 @@ pub struct ScorerBadge {
     pub name: String,
     pub issuer: Address,
     pub score: u32,
+    pub icon: String
 }
 
 #[contracttype]
@@ -430,6 +431,7 @@ mod test {
             name: String::from_str(&env, "Test Badge"),
             issuer: scorer_creator.clone(),
             score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         let badge_address = Address::generate(&env);
         scorer_badges.set(badge_address, badge);
@@ -745,6 +747,7 @@ mod test {
             name: String::from_str(&env, "New Test Badge"),
             issuer: scorer_creator.clone(),
             score: 200,
+            icon: String::from_str(&env, "new_badge_icon.png"),
         };
         
         // Add the badge with an Address instead of u32
@@ -779,6 +782,7 @@ mod test {
             name: String::from_str(&env, "Badge to Remove"),
             issuer: scorer_creator.clone(),
             score: 150,
+            icon: String::from_str(&env, "remove_badge_icon.png"),
         };
         
         // Add the badge with an Address
@@ -825,6 +829,7 @@ mod test {
             name: String::from_str(&env, "Unauthorized Badge"),
             issuer: unauthorized_user.clone(),
             score: 50,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         
         // Use an Address for the badge ID
@@ -856,6 +861,7 @@ mod test {
             name: String::from_str(&env, "First Badge"),
             issuer: scorer_creator.clone(),
             score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         
         // Use an Address for the badge ID
@@ -869,6 +875,7 @@ mod test {
             name: String::from_str(&env, "Duplicate Badge"),
             issuer: scorer_creator.clone(),
             score: 300,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         
         // This should panic because we're using the same badge_address
@@ -885,6 +892,7 @@ mod test {
             name: String::from_str(&env, "Badge"),
             issuer: scorer_creator.clone(),
             score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         
         // Use an Address for the badge ID
@@ -910,6 +918,7 @@ mod test {
             name: String::from_str(&env, ""), // Empty name
             issuer: scorer_creator.clone(),
             score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         
         let badge_address = Address::generate(&env);
@@ -928,6 +937,7 @@ mod test {
             name: String::from_str(&env, "Invalid Score Badge"),
             issuer: scorer_creator.clone(),
             score: 0, // Invalid score
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         
         let badge_address = Address::generate(&env);
@@ -949,6 +959,7 @@ mod test {
             name: String::from_str(&env, "Manager Badge"),
             issuer: manager.clone(),
             score: 200,
+            icon: String::from_str(&env, "badge_icon.png"),
         };
         
         let badge_address = Address::generate(&env);
