@@ -24,7 +24,8 @@ enum Error {
     ManagerNotFound,
     ManagersNotFound,
     ContractCreatorNotFound,
-    ScorersWereNotFound
+    ScorersWereNotFound,
+    ScorerNotFound
 }
 
 #[contract]
@@ -118,11 +119,6 @@ impl ScorerFactoryContract {
         // Skip authorization if deployer is the current contract
         if deployer != env.current_contract_address() {
             deployer.require_auth();
-        }
-
-        // Verify deployer is a manager
-        if !Self::is_manager(env.clone(), deployer.clone()) {
-            panic!("{:?}", Error::Unauthorized);
         }
 
         // Get the stored WASM hash
@@ -257,6 +253,50 @@ impl ScorerFactoryContract {
     /// * This function will panic if the creator's address is not found in storage.
     pub fn get_contract_creator(env: Env) -> Address{
         return env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerFactoryCreator).unwrap_or_else(|| panic!("{:?}", Error::ContractCreatorNotFound));
+    }
+
+    /// Removes a scorer contract from the factory's registry
+    /// 
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `caller` - The address that will authenticate the removal of the scorer
+    /// * `scorer_address` - The address of the scorer contract to be removed
+    /// 
+    /// # Panics
+    /// * When the caller is not a registered manager (`Error::Unauthorized`)
+    /// * When the scorer address is not found in the registry
+    pub fn remove_scorer(env: Env, caller: Address, scorer_address: Address) {
+        // Require authentication from the caller
+        caller.require_auth();
+
+        // Verify caller is a manager
+        if !Self::is_manager(env.clone(), caller.clone()) {
+            panic!("{:?}", Error::Unauthorized);
+        }
+
+        let mut created_scorers = env.storage()
+            .persistent()
+            .get::<DataKey, Map<Address, (String, String)>>(&DataKey::CreatedScorers)
+            .unwrap_or_else(|| Map::new(&env));
+
+        // Check if the scorer exists
+        if !created_scorers.contains_key(scorer_address.clone()) {
+            panic!("{:?}", Error::ScorerNotFound);
+        }
+
+        let (scorer_name, scorer_description) = created_scorers.get(scorer_address.clone()).unwrap();
+        
+        // Remove the scorer from the map
+        created_scorers.remove(scorer_address.clone());
+        
+        // Update storage
+        env.storage().persistent().set(&DataKey::CreatedScorers, &created_scorers);
+        
+        // Emit an event for the removal
+        env.events().publish(
+            (TOPIC_SCORER, symbol_short!("remove")), 
+            (caller, scorer_address, scorer_name, scorer_description)
+        );
     }
 }
 

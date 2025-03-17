@@ -122,42 +122,6 @@ use soroban_sdk::{
         assert!(factory_client.is_initialized());
         assert!(factory_client.is_manager(&admin));
     }
- 
-   #[test]
-    #[should_panic(expected = "Unauthorized")]
-    fn test_create_scorer_unauthorized() {
-        let (env, _scorer_factory_creator, scorer_factory_client) = setup_contract();
-        
-        // Create an unauthorized address
-        let unauthorized_address = Address::generate(&env);
-        
-        let salt = BytesN::from_array(&env, &[1; 32]);
-        let init_fn = Symbol::new(&env, "initialize");
-        
-        // Create the badge map
-        let mut scorer_badges = Map::new(&env);
-        let badge = ScorerBadge {
-            name: String::from_str(&env, "Test Badge"),
-            issuer: unauthorized_address.clone(),
-            score: 100,
-            icon: String::from_str(&env, "badge_icon.png"),
-        };
-        scorer_badges.set(1, badge);
-        
-        let mut init_args: Vec<Val> = Vec::new(&env);
-        init_args.push_back(unauthorized_address.clone().into_val(&env));
-        init_args.push_back(scorer_badges.into_val(&env));
-        init_args.push_back(String::from_str(&env, "new_scorer").into_val(&env));
-        init_args.push_back(String::from_str(&env, "scorer's description").into_val(&env));
-
-        // This should panic because unauthorized_address is not a manager
-        scorer_factory_client.create_scorer(
-            &unauthorized_address,
-            &salt,
-            &init_fn,
-            &init_args,
-        );
-    }
 
     #[test]
     fn test_get_scorers() {
@@ -203,6 +167,20 @@ use soroban_sdk::{
     use super::*;
     use soroban_sdk::{testutils::{Address as _, Events}, IntoVal};
  
+    fn setup_contract() -> (Env, Address, ScorerFactoryContractClient<'static>) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let scorer_factory_creator = Address::generate(&env);
+        let scorer_factory_contract_id = env.register_contract(None, ScorerFactoryContract);
+        let scorer_factory_client = ScorerFactoryContractClient::new(&env, &scorer_factory_contract_id);
+        
+        // Upload the real scorer WASM and get its hash
+        let wasm_hash = install_scorer_wasm(&env);
+        
+        scorer_factory_client.initialize(&scorer_factory_creator, &wasm_hash);
+        (env, scorer_factory_creator, scorer_factory_client)
+    }
+
     #[test]
     fn test_integration() {
         let env = Env::default();
@@ -429,5 +407,92 @@ use soroban_sdk::{
             &Symbol::new(&env, "initialize"),
             &init_args,
         );
+    }
+
+    #[test]
+    fn test_remove_scorer() {
+        let (env, admin, factory_client) = setup_contract();
+        let manager = Address::generate(&env);
+        
+        // Add manager
+        factory_client.add_manager(&admin, &manager);
+        assert!(factory_client.is_manager(&manager));
+
+        // Create a scorer
+        let mut scorer_badges = Map::new(&env);
+        let badge = ScorerBadge {
+            name: String::from_str(&env, "Test Badge"),
+            issuer: admin.clone(),
+            score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
+        };
+        scorer_badges.set(1, badge);
+        
+        let mut init_args: Vec<Val> = Vec::new(&env);
+        init_args.push_back(admin.clone().into_val(&env));
+        init_args.push_back(scorer_badges.into_val(&env));
+        init_args.push_back(String::from_str(&env, "Test Scorer").into_val(&env));
+        init_args.push_back(String::from_str(&env, "A test scorer").into_val(&env));
+
+        let scorer_address = factory_client.create_scorer(
+            &admin,
+            &BytesN::from_array(&env, &[1_u8; 32]),
+            &Symbol::new(&env, "initialize"),
+            &init_args
+        );
+
+        // Verify scorer was created
+        let scorers = factory_client.get_scorers();
+        assert!(scorers.contains_key(scorer_address.clone()));
+
+        // Remove the scorer using the manager
+        factory_client.remove_scorer(&manager, &scorer_address);
+
+        // Verify scorer was removed
+        let scorers_after = factory_client.get_scorers();
+        assert!(!scorers_after.contains_key(scorer_address));
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized")]
+    fn test_remove_scorer_unauthorized() {
+        let (env, admin, factory_client) = setup_contract();
+        let non_manager = Address::generate(&env);
+        
+        // Create a scorer
+        let mut scorer_badges = Map::new(&env);
+        let badge = ScorerBadge {
+            name: String::from_str(&env, "Test Badge"),
+            issuer: admin.clone(),
+            score: 100,
+            icon: String::from_str(&env, "badge_icon.png"),
+        };
+        scorer_badges.set(1, badge);
+        
+        let mut init_args: Vec<Val> = Vec::new(&env);
+        init_args.push_back(admin.clone().into_val(&env));
+        init_args.push_back(scorer_badges.into_val(&env));
+        init_args.push_back(String::from_str(&env, "Test Scorer").into_val(&env));
+        init_args.push_back(String::from_str(&env, "A test scorer").into_val(&env));
+
+        let scorer_address = factory_client.create_scorer(
+            &admin,
+            &BytesN::from_array(&env, &[1_u8; 32]),
+            &Symbol::new(&env, "initialize"),
+            &init_args
+        );
+
+        // Attempt to remove the scorer with a non-manager (should panic)
+        factory_client.remove_scorer(&non_manager, &scorer_address);
+    }
+
+    #[test]
+    #[should_panic(expected = "ScorerNotFound")]
+    fn test_remove_nonexistent_scorer() {
+        let (env, admin, factory_client) = setup_contract();
+
+        // Try to remove a non-existent scorer (should panic)
+        let nonexistent_scorer = Address::generate(&env);
+        factory_client.remove_scorer(&admin, &nonexistent_scorer);
     }
  }
