@@ -47,7 +47,8 @@ impl Deployer {
 #[cfg(test)]
 mod test {
     use super::*;
-    //use scorer::ScorerBadge;
+    use scorer::BadgeDetails;
+    use scorer_contract::BadgeId;
     use soroban_sdk::{testutils::Address as _, String, Map, Vec, testutils::BytesN as _, IntoVal};
     mod scorer_contract {
         soroban_sdk::contractimport!(
@@ -55,44 +56,52 @@ mod test {
         );
     }
 
-    // #[test]
-    // fn test_deploy_scorer() {
-    //     let env = Env::default();
-    //     env.mock_all_auths();
+    #[test]
+    fn test_deploy_scorer() {
+        let env = Env::default();
+        env.mock_all_auths();
 
-    //     // Test variables
-    //     let scorer_creator = Address::generate(&env);
-    //     let mut scorer_badges = Map::new(&env);
-    //     let badge = ScorerBadge {
-    //         name: String::from_str(&env, "Test Badge"),
-    //         issuer: scorer_creator.clone(),
-    //         score: 100,
-    //     };
-    //     scorer_badges.set(1, badge);
-
-    //     // Deploy the generic deployer contract
-    //     let deployer_address = env.register_contract(None, Deployer);
-    //     let deployer = DeployerClient::new(&env, &deployer_address);
-
-    //     // Prepare initialization arguments
-    //     let mut init_args: Vec<Val> = Vec::new(&env);
-    //     init_args.push_front(scorer_creator.clone().into_val(&env));
-    //     init_args.push_front(scorer_badges.into_val(&env));
-
-
-    //     let init_fn = Symbol::new(&env, "initialize");
+        // Test variables
+        let scorer_creator = Address::generate(&env);
+        let mut scorer_badges = Map::new(&env);
         
-    //     // Get the WASM hash of the Scorer contract
-    //     let wasm_hash = env.deployer().upload_contract_wasm(scorer_contract::WASM);
-    //     let salt = BytesN::random(&env);
+        let badge_id = BadgeId {
+            name: String::from_str(&env, "Test Badge"),
+            issuer: scorer_creator.clone()
+        };
 
-    //     // Deploy and initialize the scorer contract atomically
-    //     let (_scorer_address, _) = deployer.deploy(
-    //         &scorer_creator,
-    //         &wasm_hash,
-    //         &salt,
-    //         &init_fn,
-    //         &init_args,
-    //     );
-    // }
+        let badge_details = BadgeDetails {
+            score: 100,
+            icon: String::from_str(&env, "image.png")
+        };
+        scorer_badges.set(badge_id, badge_details);
+
+        // Deploy the generic deployer contract
+        let deployer_address = env.register_contract(None, Deployer);
+        let deployer = DeployerClient::new(&env, &deployer_address);
+
+        // Prepare initialization arguments
+        let mut init_args: Vec<Val> = Vec::new(&env);
+        // Add arguments in the correct order matching the initialize function signature
+        init_args.push_back(scorer_creator.clone().into_val(&env));
+        init_args.push_back(scorer_badges.into_val(&env));
+        init_args.push_back(String::from_str(&env, "Test Scorer").into_val(&env));
+        init_args.push_back(String::from_str(&env, "A test scorer contract").into_val(&env));
+
+        let init_fn = Symbol::new(&env, "initialize");
+        
+        // Get the WASM hash of the Scorer contract
+        let wasm_hash = env.deployer().upload_contract_wasm(scorer_contract::WASM);
+        let salt = BytesN::random(&env);
+
+        // Deploy and initialize the scorer contract atomically
+        let (_scorer_address, _) = deployer.deploy(
+            &scorer_creator,
+            &wasm_hash,
+            &salt,
+            &init_fn,
+            &init_args,
+        );
+        
+    }
 }
