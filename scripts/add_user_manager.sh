@@ -112,11 +112,10 @@ echo -e "${GREEN}Successfully added manager to scorer${NC}"
 echo -e "${YELLOW}Adding user to scorer contract...${NC}"
 ADD_USER_RESULT=$(stellar contract invoke \
     --id "$SCORER_ADDRESS" \
-    --source "$SOURCE_KEY" \
+    --source "$TARGET_KEY" \
     --network "$NETWORK" \
     -- \
     add_user \
-    --sender "$ADMIN_ADDRESS" \
     --user "$TARGET_ADDRESS")
 
 if [ $? -ne 0 ]; then
@@ -150,11 +149,10 @@ echo -e "${GREEN}Successfully removed manager from scorer${NC}"
 echo -e "${YELLOW}Removing user from scorer contract...${NC}"
 REMOVE_USER_RESULT=$(stellar contract invoke \
     --id "$SCORER_ADDRESS" \
-    --source "$SOURCE_KEY" \
+    --source "$TARGET_KEY" \
     --network "$NETWORK" \
     -- \
     remove_user \
-    --sender "$ADMIN_ADDRESS" \
     --user "$TARGET_ADDRESS")
 
 if [ $? -ne 0 ]; then

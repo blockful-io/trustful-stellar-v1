@@ -9,8 +9,6 @@ NC='\033[0m'
 # Default values
 NETWORK="testnet"
 SOURCE_KEY=""
-SCORER_ADDRESS=""
-FUND_ACCOUNT=true
 
 # Load scorer contract info
 if [ ! -f .deploy/scorer.env ]; then
@@ -60,55 +58,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate inputs
-if [[ -z "$SOURCE_KEY" ]]; then
+# Validate source key
+if [ -z "$SOURCE_KEY" ]; then
     echo -e "${RED}Error: Source key name is required${NC}"
     usage
     exit 1
 fi
-
-if [[ "$NETWORK" != "testnet" && "$NETWORK" != "mainnet" ]]; then
-    echo -e "${RED}Error: Network must be either 'testnet' or 'mainnet'${NC}"
-    usage
-    exit 1
-fi
-
-# Function to generate and fund a key if it doesn't exist
-generate_and_fund_key_if_needed() {
-    local key_name=$1
-    if key_exists "$key_name"; then
-        echo -e "${GREEN}Key $key_name already exists. Using existing key...${NC}"
-    else
-        echo -e "${YELLOW}Generating and funding account for $key_name...${NC}"
-        stellar keys generate --global "$key_name" --network "$NETWORK" --fund
-
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}Error: Failed to generate and fund account for $key_name${NC}"
-            exit 1
-        fi
-    fi
-}
-
-# Function to add a user
-add_user() {
-    local user_key=$1
-    echo -e "${YELLOW}Adding user $user_key to scorer contract...${NC}"
-    ADD_USER_RESULT=$(stellar contract invoke \
-        --id "$SCORER_ADDRESS" \
-        --source "$user_key" \
-        --network "$NETWORK" \
-        -- \
-        add_user \
-        --user "$user_key")
-
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Error: Failed to add user $user_key to scorer${NC}"
-        echo "$ADD_USER_RESULT"
-        exit 1
-    fi
-
-    echo -e "${GREEN}Successfully added user $user_key to scorer${NC}"
-}
 
 # Function to add a manager
 add_manager() {
@@ -132,22 +87,6 @@ add_manager() {
     echo -e "${GREEN}Successfully added manager $manager_key to scorer${NC}"
 }
 
-# Function to check if a key exists
-key_exists() {
-    local key_name="$1"
-    stellar keys ls | grep -q "$key_name"
-}
-
-# Add 10 users
-for i in {1..10}; do
-    USER_KEY="_user_$i"
-    generate_and_fund_key_if_needed "$USER_KEY"
-    add_user "$USER_KEY"
-done
-
-# Add 2 managers
-for i in {1..2}; do
-    MANAGER_KEY="_manager_$i"
-    generate_and_fund_key_if_needed "$MANAGER_KEY"
-    add_manager "$MANAGER_KEY"
-done
+# Add specific manager
+SPECIFIC_MANAGER_KEY="GD7IDV44QE7CN35M2QLSAISAYPSOSSZTV7LWMKBU5PKDS7NQKTFRZUTS"
+add_manager "$SPECIFIC_MANAGER_KEY"
