@@ -47,7 +47,7 @@ impl Deployer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use scorer::ScorerBadge;
+    //use scorer::ScorerBadge;
     use soroban_sdk::{testutils::Address as _, String, Map, Vec, testutils::BytesN as _, IntoVal};
     mod scorer_contract {
         soroban_sdk::contractimport!(
