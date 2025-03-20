@@ -51,7 +51,6 @@ use soroban_sdk::{
             let salt = BytesN::from_array(&env, &[1; 32]);
             let init_fn = Symbol::new(&env, "initialize");
             
-            // Create the badge map with new structure
             let mut scorer_badges = Map::new(&env);
             let badge_id = BadgeId {
                 name: String::from_str(&env, "Test Badge"),
@@ -68,8 +67,11 @@ use soroban_sdk::{
             
             let name = String::from_str(&env, "new_scorer");
             let description = String::from_str(&env, "scorer's description");
+            let icon = String::from_str(&env, "icon.png");
             init_args.push_back(name.into_val(&env));
             init_args.push_back(description.into_val(&env));
+            init_args.push_back(icon.into_val(&env));
+
 
             // Create the scorer contract
             let scorer_address = scorer_factory_client.create_scorer(
@@ -84,7 +86,7 @@ use soroban_sdk::{
             let expected_event = (
                 scorer_factory_client.address.clone(),
                 (String::from_str(&env, "scorer"), symbol_short!("create")).into_val(&env),
-                (scorer_factory_creator, scorer_address, name, description).into_val(&env)
+                (scorer_factory_creator, scorer_address, name, description, icon).into_val(&env)
             );
 
             assert!(env.events().all().contains(&expected_event), 
@@ -145,6 +147,7 @@ use soroban_sdk::{
         init_args.push_back(scorer_badges.into_val(&env));
         init_args.push_back(String::from_str(&env, "new_scorer").into_val(&env));
         init_args.push_back(String::from_str(&env, "scorer's description").into_val(&env));
+        init_args.push_back(String::from_str(&env,"icon.png").into_val(&env));
 
         // Create the scorer contract
         let scorer_address = scorer_factory_client.create_scorer(
@@ -252,6 +255,7 @@ use soroban_sdk::{
         scorer_init_args.push_back(scorer_badges.into_val(&env));
         scorer_init_args.push_back(String::from_str(&env, "new_scorer").into_val(&env));
         scorer_init_args.push_back(String::from_str(&env, "scorer's description").into_val(&env));
+        scorer_init_args.push_back(String::from_str(&env, "icon.png").into_val(&env));
 
         // Create the scorer contract
         let scorer_address = factory_client.create_scorer(
@@ -267,11 +271,12 @@ use soroban_sdk::{
         // Step 8: Get scorers and verify count
         let scorers = factory_client.get_scorers();
 
-        let name = String::from_str(&env, "new_scorer").into_val(&env);
-        let description = String::from_str(&env, "scorer's description").into_val(&env);
+        let name = String::from_str(&env, "new_scorer");
+        let description = String::from_str(&env, "scorer's description");
+        let icon = String::from_str(&env, "icon.png");
 
         assert_eq!(scorers.len(), 1);
-        assert_eq!(scorers.get(scorer_address.clone()).unwrap(), (name, description));
+        assert_eq!(scorers.get(scorer_address.clone()).unwrap(), (name, description, icon));
 
         env.budget().reset_default();
 
@@ -304,6 +309,7 @@ use soroban_sdk::{
         new_scorer_init_args.push_back(new_scorer_badges.into_val(&env));
         new_scorer_init_args.push_back(String::from_str(&env, "new_scorer").into_val(&env));
         new_scorer_init_args.push_back(String::from_str(&env, "scorer's description").into_val(&env));
+        new_scorer_init_args.push_back(String::from_str(&env, "icon.png").into_val(&env));
 
         let new_scorer_address = factory_client.create_scorer(
             &new_manager,
@@ -315,9 +321,10 @@ use soroban_sdk::{
         // Step 11: Verify second scorer
         let scorers = factory_client.get_scorers();
         assert_eq!(scorers.len(), 2);
-        let name: String = String::from_str(&env, "new_scorer").into_val(&env);
-        let description: String = String::from_str(&env, "scorer's description").into_val(&env);
-        assert_eq!(scorers.get(new_scorer_address.clone()).unwrap(), (name.clone(), description.clone()));
+        let name = String::from_str(&env, "new_scorer");
+        let description = String::from_str(&env, "scorer's description");
+        let icon = String::from_str(&env, "icon.png");
+        assert_eq!(scorers.get(new_scorer_address.clone()).unwrap(), (name, description, icon));
 
         // Step 12: Remove manager and verify event
         factory_client.remove_manager(&admin, &new_manager);
@@ -374,6 +381,7 @@ use soroban_sdk::{
         init_args.push_back(scorer_badges.into_val(&env));
         init_args.push_back(String::from_str(&env, "Test Scorer").into_val(&env));
         init_args.push_back(String::from_str(&env, "A test scorer").into_val(&env));
+        init_args.push_back(String::from_str(&env, "icon.png").into_val(&env));
 
         let scorer_address = factory_client.create_scorer(
             &admin,
@@ -416,6 +424,7 @@ use soroban_sdk::{
         init_args.push_back(scorer_badges.into_val(&env));
         init_args.push_back(String::from_str(&env, "Test Scorer").into_val(&env));
         init_args.push_back(String::from_str(&env, "A test scorer").into_val(&env));
+        init_args.push_back(String::from_str(&env, "icon.png").into_val(&env));
 
         let scorer_address = factory_client.create_scorer(
             &admin,

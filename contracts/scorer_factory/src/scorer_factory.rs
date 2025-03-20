@@ -57,7 +57,7 @@ impl ScorerFactoryContract {
         env.storage().persistent().set(&DataKey::ScorerFactoryCreator, &scorer_creator);
         env.storage().persistent().set(&DataKey::Managers, &managers);
         env.storage().persistent().set(&DataKey::ScorerWasmHash, &scorer_wasm_hash);
-        env.storage().persistent().set(&DataKey::CreatedScorers, &Map::<Address, (String, String)>::new(&env));
+        env.storage().persistent().set(&DataKey::CreatedScorers, &Map::<Address, (String, String, String)>::new(&env));
     }
 
     /// Checks if the contract has been initialized
@@ -139,17 +139,18 @@ impl ScorerFactoryContract {
         // Record the created scorer
         let mut created_scorers = env.storage()
             .persistent()
-            .get::<DataKey, Map<Address, (String, String)>>(&DataKey::CreatedScorers)
+            .get::<DataKey, Map<Address, (String, String, String)>>(&DataKey::CreatedScorers)
             .unwrap_or_else(|| Map::new(&env));
 
-        // Extract name and description from init_args
+        // Extract name, description ans icon from init_args 
         let args_len = init_args.len();
-        let scorer_description = String::from_val(&env, &init_args.get(args_len - 1).unwrap());
-        let scorer_name = String::from_val(&env, &init_args.get(args_len - 2).unwrap());
+        let scorer_icon = String::from_val(&env, &init_args.get(args_len - 1).unwrap());
+        let scorer_description = String::from_val(&env, &init_args.get(args_len - 2).unwrap());
+        let scorer_name = String::from_val(&env, &init_args.get(args_len - 3).unwrap());
             
-        created_scorers.set(scorer_address.clone(), (scorer_name.clone(), scorer_description.clone()));
+        created_scorers.set(scorer_address.clone(), (scorer_name.clone(), scorer_description.clone(), scorer_icon.clone()));
         env.storage().persistent().set(&DataKey::CreatedScorers, &created_scorers);
-        env.events().publish((TOPIC_SCORER, symbol_short!("create")), (deployer, scorer_address.clone(), scorer_name, scorer_description));
+        env.events().publish((TOPIC_SCORER, symbol_short!("create")), (deployer, scorer_address.clone(), scorer_name, scorer_description, scorer_icon));
 
         scorer_address
     }
@@ -161,8 +162,8 @@ impl ScorerFactoryContract {
     /// 
     /// # Returns
     /// * `Map<Address, bool>` - A map where keys are scorer contract addresses and values are always true
-    pub fn get_scorers(env: Env) -> Map<Address, (String, String)> {
-        return env.storage().persistent().get::<DataKey, Map<Address, (String, String)>>(&DataKey::CreatedScorers).unwrap_or_else(|| panic!("{:?}", Error::ScorersWereNotFound));
+    pub fn get_scorers(env: Env) -> Map<Address, (String, String, String)> {
+        return env.storage().persistent().get::<DataKey, Map<Address, (String, String, String)>>(&DataKey::CreatedScorers).unwrap_or_else(|| panic!("{:?}", Error::ScorersWereNotFound));
     }
 
     /// Adds a new manager to the contract
@@ -174,6 +175,7 @@ impl ScorerFactoryContract {
     /// 
     /// # Panics
     /// * When the caller is not the scorer factory creator or a manager
+    /// * When the manager already exists
     pub fn add_manager(env: Env, caller: Address, manager: Address) {
         // Require authentication from the caller
         caller.require_auth();
@@ -187,13 +189,19 @@ impl ScorerFactoryContract {
         let mut managers = env.storage().persistent()
             .get::<DataKey, Vec<Address>>(&DataKey::Managers)
             .unwrap_or(Vec::new(&env));
+        
+        // Check if manager already exists to avoid duplication
+        if managers.contains(manager.clone()) {
+            panic!("{:?}", Error::ManagerAlreadyExists);
+        }
+        
         managers.push_back(manager.clone());
         env.storage().persistent().set(&DataKey::Managers, &managers);
 
         env.events().publish((TOPIC_MANAGER, symbol_short!("add")), (caller, manager));
     }
     
-    /// Removes a manager from the contract by setting their status to false
+    /// Removes a manager from the contract
     /// 
     /// # Arguments
     /// * `env` - The Soroban environment
@@ -202,6 +210,7 @@ impl ScorerFactoryContract {
     /// 
     /// # Panics
     /// * When the caller is not the scorer factory creator or a manager
+    /// * When the manager to be removed is not found
     pub fn remove_manager(env: Env, caller: Address, manager: Address) {
         // Require authentication from the caller
         caller.require_auth();
@@ -226,10 +235,11 @@ impl ScorerFactoryContract {
         
         if let Some(idx) = index_to_remove {
             managers.remove(idx);
+            env.storage().persistent().set(&DataKey::Managers, &managers);
+            env.events().publish((TOPIC_MANAGER, symbol_short!("remove")), (caller, manager));
+        } else {
+            panic!("{:?}", Error::ManagerNotFound);
         }
-        
-        env.storage().persistent().set(&DataKey::Managers, &managers);
-        env.events().publish((TOPIC_MANAGER, symbol_short!("remove")), (caller, manager));
     }
 
 
@@ -276,7 +286,7 @@ impl ScorerFactoryContract {
 
         let mut created_scorers = env.storage()
             .persistent()
-            .get::<DataKey, Map<Address, (String, String)>>(&DataKey::CreatedScorers)
+            .get::<DataKey, Map<Address, (String, String, String)>>(&DataKey::CreatedScorers)
             .unwrap_or_else(|| Map::new(&env));
 
         // Check if the scorer exists
@@ -284,7 +294,7 @@ impl ScorerFactoryContract {
             panic!("{:?}", Error::ScorerNotFound);
         }
 
-        let (scorer_name, scorer_description) = created_scorers.get(scorer_address.clone()).unwrap();
+        let (scorer_name, scorer_description, icon) = created_scorers.get(scorer_address.clone()).unwrap();
         
         // Remove the scorer from the map
         created_scorers.remove(scorer_address.clone());
@@ -295,7 +305,7 @@ impl ScorerFactoryContract {
         // Emit an event for the removal
         env.events().publish(
             (TOPIC_SCORER, symbol_short!("remove")), 
-            (caller, scorer_address, scorer_name, scorer_description)
+            (caller, scorer_address, scorer_name, scorer_description, icon)
         );
     }
 }
