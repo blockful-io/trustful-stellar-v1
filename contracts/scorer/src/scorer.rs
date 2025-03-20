@@ -23,7 +23,8 @@ enum DataKey {
     Managers,
     Initialized,
     Name,
-    Description
+    Description,
+    Icon
 }
 
 #[contract]
@@ -49,7 +50,7 @@ enum Error {
 #[contractimpl]
 impl ScorerContract {
     /// Contract constructor
-    pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<BadgeId, u32>, name: String, description: String) {
+    pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<BadgeId, u32>, name: String, description: String, icon: String) {
         
         // Ensure that the contract is not initialized
         if Self::is_initialized(&env) {
@@ -71,6 +72,7 @@ impl ScorerContract {
         env.storage().persistent().set(&DataKey::Initialized, &true);
         env.storage().persistent().set(&DataKey::Name, &name);
         env.storage().persistent().set(&DataKey::Description, &description);
+        env.storage().persistent().set(&DataKey::Icon, &icon);
 
         // Emit a initialization event
         env.events().publish(
@@ -453,7 +455,7 @@ mod test {
         let scorer_client = ScorerContractClient::new(&env, &scorer_contract_id);
 
         // Initialize contract
-        scorer_client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."));
+        scorer_client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."), &String::from_str(&env,"icon.png"));
 
         (env, scorer_creator, scorer_client)
     }
@@ -469,7 +471,7 @@ mod test {
         let (env, scorer_creator, client) = setup_contract();
         let scorer_badges = Map::new(&env);
         
-        client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."));
+        client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."),&String::from_str(&env,"icon.png"));
     }
 
     #[test]
