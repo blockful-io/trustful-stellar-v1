@@ -16,13 +16,6 @@ pub struct BadgeId {
 }
 
 #[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BadgeDetails {
-    pub score: u32,
-    pub icon: String
-}
-
-#[contracttype]
 enum DataKey {
     ScorerCreator,
     ScorerBadges,
@@ -56,7 +49,7 @@ enum Error {
 #[contractimpl]
 impl ScorerContract {
     /// Contract constructor
-    pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<BadgeId, BadgeDetails>, name: String, description: String) {
+    pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<BadgeId, u32>, name: String, description: String) {
         
         // Ensure that the contract is not initialized
         if Self::is_initialized(&env) {
@@ -294,8 +287,8 @@ impl ScorerContract {
     /// * `Map<BadgeId, BadgeDetails>` - A map where:
     ///   - Key: Badge ID (BadgeId struct)
     ///   - Value: BadgeDetails struct containing the badge details
-    pub fn get_badges(env: Env) -> Map<BadgeId, BadgeDetails> {
-        env.storage().persistent().get::<DataKey, Map<BadgeId, BadgeDetails>>(&DataKey::ScorerBadges).unwrap()
+    pub fn get_badges(env: Env) -> Map<BadgeId, u32> {
+        env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap()
     }
 
     /// Retrieves all the managers from the contract.
@@ -330,14 +323,13 @@ impl ScorerContract {
     /// * `name` - The name of the badge
     /// * `issuer` - The issuer of the badge
     /// * `score` - The score value of the badge
-    /// * `icon` - The icon URL or identifier for the badge
     /// 
     /// # Panics
     /// * If the sender is not a manager
     /// * If a badge with the given name and issuer already exists
     /// * If the badge name is empty
     /// * If the badge score is invalid
-    pub fn add_badge(env: Env, sender: Address, name: String, issuer: Address, score: u32, icon: String) {
+    pub fn add_badge(env: Env, sender: Address, name: String, issuer: Address, score: u32) {
         sender.require_auth();
         
         // Check if sender is a manager
@@ -356,7 +348,7 @@ impl ScorerContract {
             panic!("{:?}", Error::InvalidBadgeScore);
         }
         
-        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, BadgeDetails>>(&DataKey::ScorerBadges).unwrap();
+        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap();
         
         // Create the badge ID and details
         let badge_id = BadgeId {
@@ -364,22 +356,17 @@ impl ScorerContract {
             issuer: issuer.clone(),
         };
         
-        let badge_details = BadgeDetails {
-            score,
-            icon: icon.clone(),
-        };
-        
         // Check if badge with this ID already exists
         if badges.contains_key(badge_id.clone()) {
             panic!("{:?}", Error::BadgeAlreadyExists);
         }
         
-        badges.set(badge_id.clone(), badge_details.clone());
+        badges.set(badge_id.clone(), score.clone());
         env.storage().persistent().set(&DataKey::ScorerBadges, &badges);
         
         env.events().publish(
             (TOPIC_BADGE, symbol_short!("add")),
-            (badge_id, badge_details, sender),
+            (badge_id, score, sender),
         );
     }
 
@@ -403,7 +390,7 @@ impl ScorerContract {
             panic!("{:?}", Error::Unauthorized);
         }
         
-        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, BadgeDetails>>(&DataKey::ScorerBadges).unwrap();
+        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap();
         
         // Create the badge key
         let badge_id = BadgeId {
@@ -444,7 +431,7 @@ mod test {
 
     use super::*;
     use soroban_sdk::testutils::{Address as _, Events};
-    use soroban_sdk::{vec, IntoVal};
+    use soroban_sdk::IntoVal;
 
     fn setup_contract() -> (Env, Address, ScorerContractClient<'static>) {
         let env = Env::default();
@@ -458,13 +445,8 @@ mod test {
             issuer: scorer_creator.clone(),
         };
         
-        let badge_details = BadgeDetails {
-            score: 100,
-            icon: String::from_str(&env, "badge_icon.png"),
-        };
-        
-        let mut scorer_badges = Map::<BadgeId, BadgeDetails>::new(&env);
-        scorer_badges.set(badge_id, badge_details);
+        let mut scorer_badges = Map::<BadgeId, u32>::new(&env);
+        scorer_badges.set(badge_id, 100);
 
         // Register the contract
         let scorer_contract_id = env.register_contract(None, ScorerContract);
@@ -775,9 +757,8 @@ mod test {
         let name = String::from_str(&env, "New Test Badge");
         let issuer = scorer_creator.clone();
         let score = 200;
-        let icon = String::from_str(&env, "new_badge_icon.png");
         
-        client.add_badge(&scorer_creator, &name, &issuer, &score, &icon);
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
         
         // Verify the badge was added
         let badges = client.get_badges();
@@ -789,8 +770,7 @@ mod test {
         
         assert!(badges.contains_key(badge_id.clone()));
         let stored_details = badges.get(badge_id.clone()).unwrap();
-        assert_eq!(stored_details.score, score);
-        assert_eq!(stored_details.icon, icon);
+        assert_eq!(stored_details, score);
         
         // Verify event emission
         let expected_event = (
@@ -811,22 +791,16 @@ mod test {
         let name = String::from_str(&env, "Badge to Remove");
         let issuer = scorer_creator.clone();
         let score = 150;
-        let icon = String::from_str(&env, "remove_badge_icon.png");
         
         // Add the badge with the new method
-        client.add_badge(&scorer_creator, &name, &issuer, &score, &icon);
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
         
         // Create badge ID for verification
         let badge_id = BadgeId {
             name: name.clone(),
             issuer: issuer.clone(),
         };
-        
-        let badge_details = BadgeDetails {
-            score,
-            icon: icon.clone(),
-        };
-        
+
         // Remove the badge
         client.remove_badge(&scorer_creator, &name, &issuer);
         
@@ -841,14 +815,14 @@ mod test {
         let expected_add_event = (
             client.address.clone(),
             (String::from_str(&env, TOPIC_BADGE), symbol_short!("add")).into_val(&env),
-            (badge_id.clone(), badge_details.clone(), scorer_creator.clone()).into_val(&env)
+            (badge_id.clone(), score.clone(), scorer_creator.clone()).into_val(&env)
         );
         
         // Check for remove event
         let expected_remove_event = (
             client.address.clone(),
             (String::from_str(&env, TOPIC_BADGE), symbol_short!("remove")).into_val(&env),
-            (badge_id, badge_details, scorer_creator).into_val(&env)
+            (badge_id, score, scorer_creator).into_val(&env)
         );
         
         // Check if both events exist in the events list
@@ -868,10 +842,9 @@ mod test {
         let name = String::from_str(&env, "Unauthorized Badge");
         let issuer = unauthorized_user.clone();
         let score = 50;
-        let icon = String::from_str(&env, "badge_icon.png");
         
         // This should panic because unauthorized_user is not a manager
-        client.add_badge(&unauthorized_user, &name, &issuer, &score, &icon);
+        client.add_badge(&unauthorized_user, &name, &issuer, &score);
     }
 
     #[test]
@@ -895,13 +868,12 @@ mod test {
         let name = String::from_str(&env, "First Badge");
         let issuer = scorer_creator.clone();
         let score = 100;
-        let icon = String::from_str(&env, "badge_icon.png");
         
         // Add the badge
-        client.add_badge(&scorer_creator, &name, &issuer, &score, &icon);
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
         
         // Try to add the same badge again (same name and issuer)
-        client.add_badge(&scorer_creator, &name, &issuer, &300, &String::from_str(&env, "different_icon.png"));
+        client.add_badge(&scorer_creator, &name, &issuer, &300);
     }
 
     #[test]
@@ -913,10 +885,9 @@ mod test {
         let name = String::from_str(&env, "Badge");
         let issuer = scorer_creator.clone();
         let score = 100;
-        let icon = String::from_str(&env, "badge_icon.png");
         
         // Add the badge
-        client.add_badge(&scorer_creator, &name, &issuer, &score, &icon);
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
         
         // Create an unauthorized user
         let unauthorized_user = Address::generate(&env);
@@ -934,10 +905,9 @@ mod test {
         let name = String::from_str(&env, ""); // Empty name
         let issuer = scorer_creator.clone();
         let score = 100;
-        let icon = String::from_str(&env, "badge_icon.png");
         
         // This should panic because the badge name is empty
-        client.add_badge(&scorer_creator, &name, &issuer, &score, &icon);
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
     }
 
     #[test]
@@ -949,10 +919,9 @@ mod test {
         let name = String::from_str(&env, "Invalid Score Badge");
         let issuer = scorer_creator.clone();
         let score = 0; // Invalid score
-        let icon = String::from_str(&env, "badge_icon.png");
         
         // This should panic because the badge score is zero
-        client.add_badge(&scorer_creator, &name, &issuer, &score, &icon);
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
     }
 
     #[test]
@@ -967,9 +936,8 @@ mod test {
         let name = String::from_str(&env, "Manager Badge");
         let issuer = manager.clone();
         let score = 200;
-        let icon = String::from_str(&env, "badge_icon.png");
         
-        client.add_badge(&manager, &name, &issuer, &score, &icon);
+        client.add_badge(&manager, &name, &issuer, &score);
         
         // Create badge ID for verification
         let badge_id = BadgeId {

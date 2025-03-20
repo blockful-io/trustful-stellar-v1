@@ -5,7 +5,7 @@ use soroban_sdk::{
  use deployer::{Deployer, DeployerClient as DeployerContractClient}; 
  use scorer_factory::{ScorerFactoryContractClient, ScorerFactoryContract};
  use scorer::ScorerContractClient;
- use scorer::{BadgeId, BadgeDetails};
+ use scorer::BadgeId;
  
  soroban_sdk::contractimport!(
     file = "wasm/deployer.wasm"
@@ -58,12 +58,9 @@ use soroban_sdk::{
                 issuer: scorer_factory_creator.clone(),
             };
             
-            let badge_details = BadgeDetails {
-                score: 100,
-                icon: String::from_str(&env, "badge_icon.png"),
-            };
+            let score: u32 = 100;
             
-            scorer_badges.set(badge_id, badge_details);
+            scorer_badges.set(badge_id, score);
             let mut init_args: Vec<Val> = Vec::new(&env);
     
             init_args.push_back(scorer_factory_creator.clone().into_val(&env));        
@@ -139,12 +136,9 @@ use soroban_sdk::{
             issuer: scorer_factory_creator.clone(),
         };
         
-        let badge_details = BadgeDetails {
-            score: 100,
-            icon: String::from_str(&env, "badge_icon.png"),
-        };
+        let score: u32 = 100;
         
-        scorer_badges.set(badge_id, badge_details);
+        scorer_badges.set(badge_id, score);
         let mut init_args: Vec<Val> = Vec::new(&env);
 
         init_args.push_back(scorer_factory_creator.clone().into_val(&env));        
@@ -249,12 +243,9 @@ use soroban_sdk::{
             issuer: admin.clone(),
         };
         
-        let badge_details = BadgeDetails {
-            score: 100,
-            icon: String::from_str(&env, "badge_icon.png"),
-        };
+        let score: u32 = 100;
         
-        scorer_badges.set(badge_id, badge_details);
+        scorer_badges.set(badge_id, score);
         
         let mut scorer_init_args: Vec<Val> = Vec::new(&env);
         scorer_init_args.push_back(admin.clone().into_val(&env));
@@ -290,8 +281,7 @@ use soroban_sdk::{
         assert_eq!(stored_badges.len(), 1);
         
         let stored_badge = stored_badges.values().first().unwrap();
-        assert_eq!(stored_badge.score, 100);
-        assert_eq!(stored_badge.icon, String::from_str(&env, "badge_icon.png"));
+        assert_eq!(stored_badge, 100);
         
         // Get the badge key to check the issuer
         let stored_badge_id = stored_badges.keys().first().unwrap();
@@ -305,12 +295,9 @@ use soroban_sdk::{
             issuer: new_manager.clone(),
         };
         
-        let badge_details = BadgeDetails {
-            score: 200,
-            icon: String::from_str(&env, "badge_icon.png"),
-        };
+        let score: u32 = 200;
         
-        new_scorer_badges.set(badge_id, badge_details);
+        new_scorer_badges.set(badge_id, score);
         
         let mut new_scorer_init_args: Vec<Val> = Vec::new(&env);
         new_scorer_init_args.push_back(new_manager.clone().into_val(&env));
@@ -378,12 +365,9 @@ use soroban_sdk::{
             issuer: admin.clone(),
         };
         
-        let badge_details = BadgeDetails {
-            score: 100,
-            icon: String::from_str(&env, "badge_icon.png"),
-        };
+        let score: u32 = 100;
         
-        scorer_badges.set(badge_id, badge_details);
+        scorer_badges.set(badge_id, score);
         
         let mut init_args: Vec<Val> = Vec::new(&env);
         init_args.push_back(admin.clone().into_val(&env));
@@ -423,12 +407,9 @@ use soroban_sdk::{
             issuer: admin.clone(),
         };
         
-        let badge_details = BadgeDetails {
-            score: 100,
-            icon: String::from_str(&env, "badge_icon.png"),
-        };
+        let score: u32 = 100;
         
-        scorer_badges.set(badge_id, badge_details);
+        scorer_badges.set(badge_id, score);
         
         let mut init_args: Vec<Val> = Vec::new(&env);
         init_args.push_back(admin.clone().into_val(&env));
