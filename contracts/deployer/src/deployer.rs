@@ -47,7 +47,6 @@ impl Deployer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use scorer::BadgeDetails;
     use scorer_contract::BadgeId;
     use soroban_sdk::{testutils::Address as _, String, Map, Vec, testutils::BytesN as _, IntoVal};
     mod scorer_contract {
@@ -70,11 +69,7 @@ mod test {
             issuer: scorer_creator.clone()
         };
 
-        let badge_details = BadgeDetails {
-            score: 100,
-            icon: String::from_str(&env, "image.png")
-        };
-        scorer_badges.set(badge_id, badge_details);
+        scorer_badges.set(badge_id, 100);
 
         // Deploy the generic deployer contract
         let deployer_address = env.register_contract(None, Deployer);
