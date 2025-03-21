@@ -85,11 +85,29 @@ echo -e "${GREEN}Using admin address: $ADMIN_ADDRESS${NC}"
 # Generate a random salt for unique contract address
 SALT=$(openssl rand -hex 32)
 
-# Create initial badge map - Using proper struct format
-BADGE_MAP="[[{\"u32\":1},{\"vec\":[{\"string\":\"Initial Badge\"},{\"address\":\"$ADMIN_ADDRESS\"},{\"u32\":100}]}]]"
+BADGE_MAP="["
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0001\"},{\"address\":\"GDQMNGUDOSMCCN6MD52DPXX4ACECXVODFK2NQQGFXYLGXJFZ2LEEIY35\"}]},{\"u32\":3}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0101\"},{\"address\":\"GDCBRDWFCCS7MY7BJREOLLEXYTWUFDGIEZZOXPD7EALXHDFCQY3QL7AE\"}]},{\"u32\":10}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0102\"},{\"address\":\"GB76OH7Z2N4BWUZREZTJ36WUDMAFCDYISM26MCNTJWZQ63D3NROYKBOZ\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0103\"},{\"address\":\"GDOPCKCQEXJFVXLWHHGVIVXYT5FKKYWRPPLPKK32RPNCKXURKZUVPJTG\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0104\"},{\"address\":\"GCEUS7FJMZWV5MGYQRUF6SR3T3IQVPASWXMT6REV5CB76N4RGOWST4JU\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0105\"},{\"address\":\"GABPJ5EWLQBVTVMHJPMF7DZ5OOZXR3JRTA3EBZEMJII6C57UEQDP4HNO\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0201\"},{\"address\":\"GBOKD6LRD3TRNHCEOBLD44MPE3KXUF3NBXNBH2IYZHIHGG7KXZ3VANS7\"}]},{\"u32\":10}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0202\"},{\"address\":\"GBYKVKGE3Z3YZFR4X4OXV4R5U5VZ52BZKFVRO3QOD62CQDBHJ6EN4RBK\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0203\"},{\"address\":\"GAEQEWJ4SFB5U2HLW6RJA3Z2VWYKOTFVGRROFH3MNIOGDWWH5LDS3UG6\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0204\"},{\"address\":\"GD42KD354VPRHU3ZD3T6UEVXCABJU242H7MUEWNW7CNQTPSLK3AOIOGH\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0205\"},{\"address\":\"GC64TX2VL5YVNQ7YSTXQAYEQDTU3KYNWQUVPCTL5Z7XULA74LJLC4H27\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0301\"},{\"address\":\"GCPFKCAL2YBIHX66MBF465NAF5KL55A6EJI7C4ZHAVIRAUKTNM3BKSJT\"}]},{\"u32\":10}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0302\"},{\"address\":\"GBPFHCWQEKMD6TS6Z73N2FQHMIIHB3Q6223LOIN3RSHNKUFFFEEL2LQD\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0303\"},{\"address\":\"GCS53T3NE3TWJXZRW6KYNQV5HIQ45SOGVUEE5Q4UIX6Z4SUANTKBTDQ7\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0304\"},{\"address\":\"GAF4P42BZL2RX4P5ZZYW4XCW4EZGL5WD7EJTTOFZ5IH2P2HFMI6SPZ4Z\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SQL0305\"},{\"address\":\"GBA35OV7NKUAV7TD4P7UIK2RNQGY2LKFOO4XTNKSZLJRNBL5JXL5BBXL\"}]},{\"u32\":1}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SSQL01\"},{\"address\":\"GAOILZ7SVHGY7ZXBGRD2JPUFUR4BR2ZQCS4M2J4NKR2FSFSHFZPU44GY\"}]},{\"u32\":15}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SSQL02\"},{\"address\":\"GANLKSR75HSQOTZRMXYKV7O453XJKJ2ZZXCRUV3CYO5OIEOPQBU5HNPN\"}]},{\"u32\":15}],"
+BADGE_MAP+="[{\"vec\":[{\"string\":\"SSQL03\"},{\"address\":\"GCT5XUV7IVJ4RFDE3ZYOSFTB6YQTZUZL22JACGNX35LVMHRYER5SCXBV\"}]},{\"u32\":15}]"
+BADGE_MAP+="]"
 
-# Create the init args
-INIT_ARGS="[{\"address\":\"$ADMIN_ADDRESS\"},{\"map\":$BADGE_MAP},{\"string\":\"New Scorer\"},{\"string\":\"This is a new scorer contract\"}]"
+INIT_ARGS="[{\"address\":\"$ADMIN_ADDRESS\"},{\"map\":$BADGE_MAP},{\"string\":\"New Scorer\"},{\"string\":\"This is a new scorer contract\"},{\"string\":\"icon.png\"}]"
 
 # Create the scorer contract
 echo -e "${YELLOW}Creating scorer contract...${NC}"
@@ -113,6 +131,7 @@ fi
 SCORER_ADDRESS=$CREATE_RESULT
 
 # Save scorer deployment information
+mkdir -p .deploy
 echo "NETWORK=$NETWORK" > .deploy/scorer.env
 echo "SCORER_ADDRESS=$SCORER_ADDRESS" >> .deploy/scorer.env
 echo "ADMIN_ADDRESS=$ADMIN_ADDRESS" >> .deploy/scorer.env
@@ -120,4 +139,4 @@ echo "DEPLOYMENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> .deploy/scorer.env
 
 echo -e "${GREEN}Scorer contract creation successful!${NC}"
 echo "Scorer Address: $SCORER_ADDRESS"
-echo "Deployment information saved to .deploy/scorer.env" 
+echo "Deployment information saved to .deploy/scorer.env"
