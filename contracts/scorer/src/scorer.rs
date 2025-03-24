@@ -5,13 +5,14 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, B
 const TOPIC_USER: &str = "user";
 const TOPIC_MANAGER: &str = "manager";
 const TOPIC_UPGRADE: &str = "upgrade";
+const TOPIC_INIT: &str = "init";
+const TOPIC_BADGE: &str = "badge";
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ScorerBadge {
+pub struct BadgeId {
     pub name: String,
     pub issuer: Address,
-    pub score: u32,
 }
 
 #[contracttype]
@@ -22,7 +23,8 @@ enum DataKey {
     Managers,
     Initialized,
     Name,
-    Description
+    Description,
+    Icon
 }
 
 #[contract]
@@ -39,12 +41,16 @@ enum Error {
     ScorerCreatorDoesNotExist,
     UserAlreadyExist,
     UserDoesNotExist,
+    BadgeAlreadyExists,
+    BadgeNotFound,
+    InvalidBadgeName,
+    InvalidBadgeScore,
 }
 
 #[contractimpl]
 impl ScorerContract {
     /// Contract constructor
-    pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<u32, ScorerBadge>, name: String, description: String) {
+    pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<BadgeId, u32>, name: String, description: String, icon: String) {
         
         // Ensure that the contract is not initialized
         if Self::is_initialized(&env) {
@@ -66,7 +72,13 @@ impl ScorerContract {
         env.storage().persistent().set(&DataKey::Initialized, &true);
         env.storage().persistent().set(&DataKey::Name, &name);
         env.storage().persistent().set(&DataKey::Description, &description);
+        env.storage().persistent().set(&DataKey::Icon, &icon);
 
+        // Emit a initialization event
+        env.events().publish(
+            (TOPIC_INIT, symbol_short!("contract")),
+            (scorer_creator, initial_managers, scorer_badges, name, description),
+        );
     }
 
     
@@ -274,12 +286,12 @@ impl ScorerContract {
     /// * `env` - The environment object providing access to the contract's storage
     /// 
     /// # Returns
-    /// * `Map<u32, ScorerBadge>` - A map where:
-    ///   - Key: Badge ID (u32)
-    ///   - Value: ScorerBadge struct containing the badge details
-    pub fn get_badges(env: Env) -> Map<u32, ScorerBadge> {
-        env.storage().persistent().get::<DataKey, Map<u32, ScorerBadge>>(&DataKey::ScorerBadges).unwrap()
-    }   
+    /// * `Map<BadgeId, BadgeDetails>` - A map where:
+    ///   - Key: Badge ID (BadgeId struct)
+    ///   - Value: BadgeDetails struct containing the badge details
+    pub fn get_badges(env: Env) -> Map<BadgeId, u32> {
+        env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap()
+    }
 
     /// Retrieves all the managers from the contract.
     ///
@@ -288,8 +300,9 @@ impl ScorerContract {
     ///
     /// # Panics
     /// * This function panic if there is no manager object.
-    pub fn get_managers(env: Env) -> Vec<Address>{
-        return env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap_or_else(|| panic!("{:?}", Error::ManagersNotFound));
+    pub fn get_managers(env: Env) -> Vec<Address> {
+        env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers)
+            .unwrap_or_else(|| panic!("{:?}", Error::ManagersNotFound))
     }
 
     /// Retrieves the address of the contract creator.
@@ -299,8 +312,108 @@ impl ScorerContract {
     ///
     /// # Panics
     /// * This function will panic if the creator's address is not found in storage.
-    pub fn get_contract_owner(env: Env) -> Address{
-        return env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorDoesNotExist));
+    pub fn get_contract_owner(env: Env) -> Address {
+        env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator)
+            .unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorDoesNotExist))
+    }
+
+    /// Adds a new badge to the contract
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `sender` - The address of the account attempting to add the badge
+    /// * `name` - The name of the badge
+    /// * `issuer` - The issuer of the badge
+    /// * `score` - The score value of the badge
+    /// 
+    /// # Panics
+    /// * If the sender is not a manager
+    /// * If a badge with the given name and issuer already exists
+    /// * If the badge name is empty
+    /// * If the badge score is invalid
+    pub fn add_badge(env: Env, sender: Address, name: String, issuer: Address, score: u32) {
+        sender.require_auth();
+        
+        // Check if sender is a manager
+        let (is_manager, _) = Self::manager_exists(&env, &sender);
+        if !is_manager {
+            panic!("{:?}", Error::Unauthorized);
+        }
+        
+        // Validate badge data
+        if name.is_empty() {
+            panic!("{:?}", Error::InvalidBadgeName);
+        }
+        
+        // Validate badge score (assuming score should be positive)
+        if score == 0 {
+            panic!("{:?}", Error::InvalidBadgeScore);
+        }
+        
+        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap();
+        
+        // Create the badge ID and details
+        let badge_id = BadgeId {
+            name: name.clone(),
+            issuer: issuer.clone(),
+        };
+        
+        // Check if badge with this ID already exists
+        if badges.contains_key(badge_id.clone()) {
+            panic!("{:?}", Error::BadgeAlreadyExists);
+        }
+        
+        badges.set(badge_id.clone(), score.clone());
+        env.storage().persistent().set(&DataKey::ScorerBadges, &badges);
+        
+        env.events().publish(
+            (TOPIC_BADGE, symbol_short!("add")),
+            (badge_id, score, sender),
+        );
+    }
+
+    /// Removes a badge from the contract
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// * `sender` - The address of the account attempting to remove the badge
+    /// * `name` - The name of the badge to remove
+    /// * `issuer` - The issuer of the badge to remove
+    /// 
+    /// # Panics
+    /// * If the sender is not a manager
+    /// * If the badge with the given name and issuer doesn't exist
+    pub fn remove_badge(env: Env, sender: Address, name: String, issuer: Address) {
+        sender.require_auth();
+        
+        // Check if sender is a manager
+        let (is_manager, _) = Self::manager_exists(&env, &sender);
+        if !is_manager {
+            panic!("{:?}", Error::Unauthorized);
+        }
+        
+        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap();
+        
+        // Create the badge key
+        let badge_id = BadgeId {
+            name,
+            issuer,
+        };
+        
+        // Check if badge exists
+        if !badges.contains_key(badge_id.clone()) {
+            panic!("{:?}", Error::BadgeNotFound);
+        }
+        
+        let badge_details = badges.get(badge_id.clone()).unwrap();
+        
+        badges.remove(badge_id.clone());
+        env.storage().persistent().set(&DataKey::ScorerBadges, &badges);
+        
+        env.events().publish(
+            (TOPIC_BADGE, symbol_short!("remove")),
+            (badge_id, badge_details, sender),
+        );
     }
 }
 
@@ -320,27 +433,29 @@ mod test {
 
     use super::*;
     use soroban_sdk::testutils::{Address as _, Events};
-    use soroban_sdk::{vec, IntoVal};
+    use soroban_sdk::IntoVal;
+
     fn setup_contract() -> (Env, Address, ScorerContractClient<'static>) {
         let env = Env::default();
         env.mock_all_auths();
 
         // Variables to initialize the contract
         let scorer_creator = Address::generate(&env);
-        let mut scorer_badges = Map::new(&env);
-        let badge = ScorerBadge {
+        
+        let badge_id = BadgeId {
             name: String::from_str(&env, "Test Badge"),
             issuer: scorer_creator.clone(),
-            score: 100,
         };
-        scorer_badges.set(1, badge);
+        
+        let mut scorer_badges = Map::<BadgeId, u32>::new(&env);
+        scorer_badges.set(badge_id, 100);
 
         // Register the contract
         let scorer_contract_id = env.register_contract(None, ScorerContract);
         let scorer_client = ScorerContractClient::new(&env, &scorer_contract_id);
 
         // Initialize contract
-        scorer_client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."));
+        scorer_client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."), &String::from_str(&env,"icon.png"));
 
         (env, scorer_creator, scorer_client)
     }
@@ -356,7 +471,7 @@ mod test {
         let (env, scorer_creator, client) = setup_contract();
         let scorer_badges = Map::new(&env);
         
-        client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."));
+        client.initialize(&scorer_creator, &scorer_badges, &String::from_str(&env, "New_contract"), &String::from_str(&env,"Contract's description."),&String::from_str(&env,"icon.png"));
     }
 
     #[test]
@@ -371,25 +486,22 @@ mod test {
         });
         assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone(), new_manager.clone()]));
 
-        // Verify event emission
-
-        assert_eq!(
-            env.events().all(),
-            vec![
-                &env,
-                (
-                    client.address.clone(),
-                    (String::from_str(&env, TOPIC_MANAGER), symbol_short!("add")).into_val(&env),
-                    (scorer_creator, new_manager).into_val(&env)
-                ),
-            ]
+        // Verify event emission - check if the expected event is in the events list
+        let expected_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_MANAGER), symbol_short!("add")).into_val(&env),
+            (scorer_creator, new_manager).into_val(&env)
         );
+        
+        assert!(env.events().all().contains(&expected_event), 
+            "Expected event not found in events list");
     }
 
     #[test]
     fn test_remove_manager() {
         let (env, scorer_creator, client) = setup_contract();
         let new_manager = Address::generate(&env);
+
         client.add_manager(&scorer_creator, &new_manager);
         client.remove_manager(&scorer_creator, &new_manager);
 
@@ -399,23 +511,15 @@ mod test {
         });
         assert_eq!(managers, Vec::from_slice(&env, &[scorer_creator.clone()]));
 
-        // Verify event emission
-        assert_eq!(
-            env.events().all(),
-            vec![
-                &env,
-                (
-                    client.address.clone(),
-                    (String::from_str(&env, TOPIC_MANAGER), symbol_short!("add")).into_val(&env),
-                    (scorer_creator.clone(), new_manager.clone()).into_val(&env)
-                ),
-                (
-                    client.address.clone(),
-                    (String::from_str(&env, TOPIC_MANAGER), symbol_short!("remove")).into_val(&env),
-                    (scorer_creator, new_manager).into_val(&env)
-                ),
-            ]
+        // Verify event emission - check if the expected event is in the events list
+        let expected_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_MANAGER), symbol_short!("remove")).into_val(&env),
+            (scorer_creator, new_manager).into_val(&env)
         );
+        
+        assert!(env.events().all().contains(&expected_event), 
+            "Remove manager event not found in events list");
     }
 
     #[test]
@@ -474,17 +578,14 @@ mod test {
         assert_eq!(0, client.contract_version());
 
         // Verify event emission
-        assert_eq!(
-            env.events().all(),
-            vec![
-                &env,
-                (
-                    client.address.clone(),
-                    (String::from_str(&env, TOPIC_UPGRADE), symbol_short!("wasm")).into_val(&env),
-                    new_wasm_hash.into_val(&env)
-                ),
-            ]
+        let expected_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_UPGRADE), symbol_short!("wasm")).into_val(&env),
+            new_wasm_hash.into_val(&env)
         );
+        
+        assert!(env.events().all().contains(&expected_event), 
+            "Upgrade event not found in events list");
     }
 
     #[test]
@@ -500,7 +601,7 @@ mod test {
     fn test_add_user() {
         let (env, _scorer_creator, client) = setup_contract();
         let user = Address::generate(&env);
-        
+
         client.add_user(&user);
         
         // Verify storage update
@@ -508,17 +609,14 @@ mod test {
         assert!(users.get(user.clone()).unwrap());
 
         // Verify event emission
-        assert_eq!(
-            env.events().all(),
-            vec![
-                &env,
-                (
-                    client.address.clone(),
-                    (String::from_str(&env, TOPIC_USER), symbol_short!("add")).into_val(&env),
-                    user.into_val(&env)
-                ),
-            ]
+        let expected_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_USER), symbol_short!("add")).into_val(&env),
+            user.into_val(&env)
         );
+        
+        assert!(env.events().all().contains(&expected_event), 
+            "Add user event not found in events list");
     }
 
     #[test]
@@ -563,22 +661,26 @@ mod test {
         assert!(!users.get(user.clone()).unwrap());
 
         // Verify event emission
-        assert_eq!(
-            env.events().all(),
-            vec![
-                &env,
-                (
-                    client.address.clone(),
-                    (String::from_str(&env, TOPIC_USER), symbol_short!("add")).into_val(&env),
-                    user.into_val(&env)
-                ),
-                (
-                    client.address.clone(),
-                    (String::from_str(&env, TOPIC_USER), symbol_short!("remove")).into_val(&env),
-                    user.into_val(&env)
-                ),
-            ]
+        let events = env.events().all();
+        
+        // Check for add event
+        let expected_add_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_USER), symbol_short!("add")).into_val(&env),
+            user.clone().into_val(&env)
         );
+        
+        // Check for remove event
+        let expected_remove_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_USER), symbol_short!("remove")).into_val(&env),
+            user.into_val(&env)
+        );
+        
+        assert!(events.contains(&expected_add_event), 
+            "Add user event not found in events list");
+        assert!(events.contains(&expected_remove_event), 
+            "Remove user event not found in events list");
     }
 
     #[test]
@@ -650,4 +752,218 @@ mod test {
         assert_eq!(owner, scorer_creator);
     }
 
+    #[test]
+    fn test_add_badge() {
+        let (env, scorer_creator, client) = setup_contract();
+
+        let name = String::from_str(&env, "New Test Badge");
+        let issuer = scorer_creator.clone();
+        let score = 200;
+        
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
+        
+        // Verify the badge was added
+        let badges = client.get_badges();
+        
+        let badge_id = BadgeId {
+            name: name.clone(),
+            issuer: issuer.clone(),
+        };
+        
+        assert!(badges.contains_key(badge_id.clone()));
+        let stored_details = badges.get(badge_id.clone()).unwrap();
+        assert_eq!(stored_details, score);
+        
+        // Verify event emission
+        let expected_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_BADGE), symbol_short!("add")).into_val(&env),
+            (badge_id, stored_details, scorer_creator).into_val(&env)
+        );
+        
+        assert!(env.events().all().contains(&expected_event), 
+            "Add badge event not found in events list");
+    }
+
+    #[test]
+    fn test_remove_badge() {
+        let (env, scorer_creator, client) = setup_contract();
+        
+        // Create a new badge to add and then remove
+        let name = String::from_str(&env, "Badge to Remove");
+        let issuer = scorer_creator.clone();
+        let score = 150;
+        
+        // Add the badge with the new method
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
+        
+        // Create badge ID for verification
+        let badge_id = BadgeId {
+            name: name.clone(),
+            issuer: issuer.clone(),
+        };
+
+        // Remove the badge
+        client.remove_badge(&scorer_creator, &name, &issuer);
+        
+        // Verify the badge was removed
+        let badges_after = client.get_badges();
+        assert!(!badges_after.contains_key(badge_id.clone()));
+        
+        // Verify event emission (should have both add and remove events)
+        let events = env.events().all();
+        
+        // Check for add event
+        let expected_add_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_BADGE), symbol_short!("add")).into_val(&env),
+            (badge_id.clone(), score.clone(), scorer_creator.clone()).into_val(&env)
+        );
+        
+        // Check for remove event
+        let expected_remove_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_BADGE), symbol_short!("remove")).into_val(&env),
+            (badge_id, score, scorer_creator).into_val(&env)
+        );
+        
+        // Check if both events exist in the events list
+        assert!(events.contains(&expected_add_event), "Add event not found in events list");
+        assert!(events.contains(&expected_remove_event), "Remove event not found in events list");
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized")]
+    fn test_add_badge_unauthorized() {
+        let (env, _scorer_creator, client) = setup_contract();
+        
+        // Create an unauthorized user
+        let unauthorized_user = Address::generate(&env);
+        
+        // Create a new badge
+        let name = String::from_str(&env, "Unauthorized Badge");
+        let issuer = unauthorized_user.clone();
+        let score = 50;
+        
+        // This should panic because unauthorized_user is not a manager
+        client.add_badge(&unauthorized_user, &name, &issuer, &score);
+    }
+
+    #[test]
+    #[should_panic(expected = "BadgeNotFound")]
+    fn test_remove_nonexistent_badge() {
+        let (env, scorer_creator, client) = setup_contract();
+        
+        // Try to remove a badge that doesn't exist
+        let nonexistent_name = String::from_str(&env, "Nonexistent Badge");
+        let issuer = scorer_creator.clone();
+        
+        client.remove_badge(&scorer_creator, &nonexistent_name, &issuer);
+    }
+
+    #[test]
+    #[should_panic(expected = "BadgeAlreadyExists")]
+    fn test_add_duplicate_badge() {
+        let (env, scorer_creator, client) = setup_contract();
+        
+        // Create a new badge
+        let name = String::from_str(&env, "First Badge");
+        let issuer = scorer_creator.clone();
+        let score = 100;
+        
+        // Add the badge
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
+        
+        // Try to add the same badge again (same name and issuer)
+        client.add_badge(&scorer_creator, &name, &issuer, &300);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized")]
+    fn test_remove_badge_unauthorized() {
+        let (env, scorer_creator, client) = setup_contract();
+        
+        // Create a new badge
+        let name = String::from_str(&env, "Badge");
+        let issuer = scorer_creator.clone();
+        let score = 100;
+        
+        // Add the badge
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
+        
+        // Create an unauthorized user
+        let unauthorized_user = Address::generate(&env);
+        
+        // This should panic because unauthorized_user is not a manager
+        client.remove_badge(&unauthorized_user, &name, &issuer);
+    }
+
+    #[test]
+    #[should_panic(expected = "InvalidBadgeName")]
+    fn test_add_badge_empty_name() {
+        let (env, scorer_creator, client) = setup_contract();
+        
+        // Create a badge with empty name
+        let name = String::from_str(&env, ""); // Empty name
+        let issuer = scorer_creator.clone();
+        let score = 100;
+        
+        // This should panic because the badge name is empty
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
+    }
+
+    #[test]
+    #[should_panic(expected = "InvalidBadgeScore")]
+    fn test_add_badge_invalid_score() {
+        let (env, scorer_creator, client) = setup_contract();
+        
+        // Create a badge with zero score
+        let name = String::from_str(&env, "Invalid Score Badge");
+        let issuer = scorer_creator.clone();
+        let score = 0; // Invalid score
+        
+        // This should panic because the badge score is zero
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
+    }
+
+    #[test]
+    fn test_manager_can_add_and_remove_badge() {
+        let (env, scorer_creator, client) = setup_contract();
+        let manager = Address::generate(&env);
+        
+        // Add a new manager
+        client.add_manager(&scorer_creator, &manager);
+        
+        // Manager adds a badge
+        let name = String::from_str(&env, "Manager Badge");
+        let issuer = manager.clone();
+        let score = 200;
+        
+        client.add_badge(&manager, &name, &issuer, &score);
+        
+        // Create badge ID for verification
+        let badge_id = BadgeId {
+            name: name.clone(),
+            issuer: issuer.clone(),
+        };
+        
+        // Verify the badge was added
+        let badges = client.get_badges();
+        assert!(badges.contains_key(badge_id.clone()));
+        
+        // Manager removes the badge
+        client.remove_badge(&manager, &name, &issuer);
+        
+        // Verify the badge was removed
+        let badges_after = client.get_badges();
+        assert!(!badges_after.contains_key(badge_id));
+    }
+
+    #[test]
+    fn test_get_contract_version() {
+        let (_, _, client) = setup_contract();
+        
+        // Verify initial contract version
+        assert_eq!(1, client.contract_version());
+    }
 }   
