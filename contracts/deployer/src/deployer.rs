@@ -82,6 +82,7 @@ mod test {
         init_args.push_back(scorer_badges.into_val(&env));
         init_args.push_back(String::from_str(&env, "Test Scorer").into_val(&env));
         init_args.push_back(String::from_str(&env, "A test scorer contract").into_val(&env));
+        init_args.push_back(String::from_str(&env, "icon.png").into_val(&env));
 
         let init_fn = Symbol::new(&env, "initialize");
         
