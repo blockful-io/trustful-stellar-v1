@@ -77,7 +77,7 @@ impl ScorerContract {
         // Emit a initialization event
         env.events().publish(
             (TOPIC_INIT, symbol_short!("contract")),
-            (scorer_creator, initial_managers, scorer_badges, name, description),
+            (scorer_creator, initial_managers, scorer_badges, name, description, icon),
         );
     }
 
