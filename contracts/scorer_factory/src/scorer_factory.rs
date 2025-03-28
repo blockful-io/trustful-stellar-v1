@@ -1,6 +1,5 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Map, String, Symbol, Val, Vec, FromVal};
-// use scorer::ScorerBadge;
 
 // Event topics
 const TOPIC_SCORER: &str = "scorer";
@@ -26,7 +25,9 @@ enum Error {
     ContractCreatorNotFound,
     ScorersWereNotFound,
     ScorerNotFound,
-    InvalidInitArgs
+    InvalidInitArgs,
+    ScorerFactoryCreatorNotFound,
+    CannotRemoveLastManager,
 }
 
 #[contract]
@@ -80,9 +81,17 @@ impl ScorerFactoryContract {
     /// 
     /// # Returns
     /// * `bool` - True if the address is the scorer factory creator, false otherwise
+    /// 
+    /// # Panics
+    /// * When the factory creator address is not found in storage
     pub fn is_scorer_factory_creator(env: Env, address: Address) -> bool {
-        env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerFactoryCreator).unwrap() == address
-    }  
+        let creator = env.storage()
+                        .persistent()
+                        .get::<DataKey, Address>(&DataKey::ScorerFactoryCreator)
+                        .unwrap_or_else(|| panic!("{:?}", Error::ScorerFactoryCreatorNotFound));
+        creator == address
+    }
+
     /// Checks if the provided address is a manager
     /// 
     /// # Arguments
@@ -92,7 +101,24 @@ impl ScorerFactoryContract {
     /// # Returns
     /// * `bool` - True if the address is a manager, false otherwise
     pub fn is_manager(env: Env, address: Address) -> bool {
-        return env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap().contains(address);
+        env.storage()
+           .persistent()
+           .get::<DataKey, Vec<Address>>(&DataKey::Managers)
+           .unwrap_or_else(|| Vec::new(&env))
+           .contains(address)
+    }
+
+    /// Checks if the caller is authorized (either factory creator or a manager)
+    /// 
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `caller` - The address to check
+    /// 
+    /// # Returns
+    /// * `bool` - True if the caller is authorized, false otherwise
+    fn is_authorized(env: &Env, caller: &Address) -> bool {
+        Self::is_scorer_factory_creator(env.clone(), caller.clone()) || 
+        Self::is_manager(env.clone(), caller.clone())
     }
 
     /// Deploy a new scorer contract
@@ -102,7 +128,10 @@ impl ScorerFactoryContract {
     /// * `deployer` - The address that will deploy the scorer contract
     /// * `salt` - A unique value to ensure unique contract addresses
     /// * `init_fn` - The initialization function name to call on the deployed contract
-    /// * `init_args` - Arguments to pass to the initialization function
+    /// * `init_args` - Arguments to pass to the initialization function, must include:
+    ///    - Argument at index (len-3): scorer_name (String)
+    ///    - Argument at index (len-2): scorer_description (String)
+    ///    - Argument at index (len-1): scorer_icon (String)
     /// 
     /// # Returns
     /// * `Address` - The address of the newly deployed scorer contract
@@ -110,6 +139,7 @@ impl ScorerFactoryContract {
     /// # Panics
     /// * When the deployer is not the current contract and fails authentication
     /// * When the deployer is not a registered manager (`Error::Unauthorized`)
+    /// * When init_args has fewer than 3 arguments (`Error::InvalidInitArgs`)
     pub fn create_scorer(
         env: Env,
         deployer: Address,
@@ -130,7 +160,7 @@ impl ScorerFactoryContract {
         let wasm_hash = env.storage()
             .persistent()
             .get::<DataKey, BytesN<32>>(&DataKey::ScorerWasmHash)
-            .unwrap();
+            .unwrap_or_else(|| panic!("{:?}", Error::ContractCreatorNotFound));
 
         // Deploy the contract using the stored Wasm hash
         let scorer_address = env
@@ -147,7 +177,7 @@ impl ScorerFactoryContract {
             .get::<DataKey, Map<Address, (String, String, String)>>(&DataKey::CreatedScorers)
             .unwrap_or_else(|| Map::new(&env));
 
-        // Extract name, description ans icon from init_args 
+        // Extract name, description and icon from init_args 
         let args_len = init_args.len();
         let scorer_icon = String::from_val(&env, &init_args.get(args_len - 1).unwrap());
         let scorer_description = String::from_val(&env, &init_args.get(args_len - 2).unwrap());
@@ -166,9 +196,16 @@ impl ScorerFactoryContract {
     /// * `env` - The Soroban environment
     /// 
     /// # Returns
-    /// * `Map<Address, bool>` - A map where keys are scorer contract addresses and values are always true
+    /// * `Map<Address, (String, String, String)>` - A map where keys are scorer contract addresses and values are tuples containing
+    ///   (scorer_name, scorer_description, scorer_icon)
+    /// 
+    /// # Panics
+    /// * When the scorers map cannot be found in storage (`Error::ScorersWereNotFound`)
     pub fn get_scorers(env: Env) -> Map<Address, (String, String, String)> {
-        return env.storage().persistent().get::<DataKey, Map<Address, (String, String, String)>>(&DataKey::CreatedScorers).unwrap_or_else(|| panic!("{:?}", Error::ScorersWereNotFound));
+        env.storage()
+           .persistent()
+           .get::<DataKey, Map<Address, (String, String, String)>>(&DataKey::CreatedScorers)
+           .unwrap_or_else(|| panic!("{:?}", Error::ScorersWereNotFound))
     }
 
     /// Adds a new manager to the contract
@@ -179,21 +216,21 @@ impl ScorerFactoryContract {
     /// * `manager` - The address to be added as a manager
     /// 
     /// # Panics
-    /// * When the caller is not the scorer factory creator or a manager
-    /// * When the manager already exists
+    /// * When the caller is not the scorer factory creator or a manager (`Error::Unauthorized`)
+    /// * When the manager already exists (`Error::ManagerAlreadyExists`)
     pub fn add_manager(env: Env, caller: Address, manager: Address) {
         // Require authentication from the caller
         caller.require_auth();
 
-        // Verify caller is factory creator or a manager
-        if !Self::is_scorer_factory_creator(env.clone(), caller.clone()) 
-            && !Self::is_manager(env.clone(), caller.clone()) {
+        // Verify caller is authorized
+        if !Self::is_authorized(&env, &caller) {
             panic!("{:?}", Error::Unauthorized);
         }
 
-        let mut managers = env.storage().persistent()
+        let mut managers = env.storage()
+            .persistent()
             .get::<DataKey, Vec<Address>>(&DataKey::Managers)
-            .unwrap_or(Vec::new(&env));
+            .unwrap_or_else(|| Vec::new(&env));
         
         // Check if manager already exists to avoid duplication
         if managers.contains(manager.clone()) {
@@ -214,32 +251,27 @@ impl ScorerFactoryContract {
     /// * `manager` - The address to be removed as a manager
     /// 
     /// # Panics
-    /// * When the caller is not the scorer factory creator or a manager
-    /// * When the manager to be removed is not found
+    /// * When the caller is not the scorer factory creator or a manager (`Error::Unauthorized`)
+    /// * When the manager to be removed is not found (`Error::ManagerNotFound`)
+    /// * When attempting to remove the last manager (`Error::CannotRemoveLastManager`)
     pub fn remove_manager(env: Env, caller: Address, manager: Address) {
         // Require authentication from the caller
         caller.require_auth();
 
-        // Verify caller is factory creator or a manager
-        if !Self::is_scorer_factory_creator(env.clone(), caller.clone()) 
-            && !Self::is_manager(env.clone(), caller.clone()) {
+        // Verify caller is authorized
+        if !Self::is_authorized(&env, &caller) {
             panic!("{:?}", Error::Unauthorized);
         }
 
-        let mut managers = env.storage().persistent()
+        let mut managers = env.storage()
+            .persistent()
             .get::<DataKey, Vec<Address>>(&DataKey::Managers)
-            .unwrap_or(Vec::new(&env));
+            .unwrap_or_else(|| panic!("{:?}", Error::ManagersNotFound));
 
-        let mut index_to_remove: Option<u32> = None;
-        for i in 0..managers.len() {
-            if managers.get(i).unwrap() == manager {
-                index_to_remove = Some(i);
-                break;
-            }
-        }
+        let position = managers.iter().position(|addr| addr == manager);
         
-        if let Some(idx) = index_to_remove {
-            managers.remove(idx);
+        if let Some(idx) = position {
+            managers.remove(idx as u32);
             env.storage().persistent().set(&DataKey::Managers, &managers);
             env.events().publish((TOPIC_MANAGER, symbol_short!("remove")), (caller, manager));
         } else {
@@ -247,27 +279,38 @@ impl ScorerFactoryContract {
         }
     }
 
-
     /// Retrieves all the managers from the contract.
     ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    ///
     /// # Returns
-    /// * A map of addresses to their manager status (true or false).
+    /// * `Vec<Address>` - A vector of all manager addresses
     ///
     /// # Panics
-    /// * This function panic if there is no manager object.
-    pub fn get_managers(env: Env) -> Vec<Address>{
-        return env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap_or_else(|| panic!("{:?}", Error::ManagersNotFound));
+    /// * When the managers vector cannot be found in storage (`Error::ManagersNotFound`)
+    pub fn get_managers(env: Env) -> Vec<Address> {
+        env.storage()
+           .persistent()
+           .get::<DataKey, Vec<Address>>(&DataKey::Managers)
+           .unwrap_or_else(|| panic!("{:?}", Error::ManagersNotFound))
     }
 
     /// Retrieves the address of the contract creator.
     ///
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    ///
     /// # Returns
-    /// * The address of the scorer factory creator.
+    /// * `Address` - The address of the scorer factory creator
     ///
     /// # Panics
-    /// * This function will panic if the creator's address is not found in storage.
-    pub fn get_contract_creator(env: Env) -> Address{
-        return env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerFactoryCreator).unwrap_or_else(|| panic!("{:?}", Error::ContractCreatorNotFound));
+    /// * When the creator's address is not found in storage (`Error::ContractCreatorNotFound`)
+    pub fn get_contract_creator(env: Env) -> Address {
+        env.storage()
+           .persistent()
+           .get::<DataKey, Address>(&DataKey::ScorerFactoryCreator)
+           .unwrap_or_else(|| panic!("{:?}", Error::ContractCreatorNotFound))
     }
 
     /// Removes a scorer contract from the factory's registry
@@ -277,9 +320,12 @@ impl ScorerFactoryContract {
     /// * `caller` - The address that will authenticate the removal of the scorer
     /// * `scorer_address` - The address of the scorer contract to be removed
     /// 
+    /// # Returns
+    /// * `()` - Returns unit type on success
+    ///
     /// # Panics
     /// * When the caller is not a registered manager (`Error::Unauthorized`)
-    /// * When the scorer address is not found in the registry
+    /// * When the scorer address is not found in the registry (`Error::ScorerNotFound`)
     pub fn remove_scorer(env: Env, caller: Address, scorer_address: Address) {
         // Require authentication from the caller
         caller.require_auth();
@@ -292,7 +338,7 @@ impl ScorerFactoryContract {
         let mut created_scorers = env.storage()
             .persistent()
             .get::<DataKey, Map<Address, (String, String, String)>>(&DataKey::CreatedScorers)
-            .unwrap_or_else(|| Map::new(&env));
+            .unwrap_or_else(|| panic!("{:?}", Error::ScorersWereNotFound));
 
         // Check if the scorer exists
         if !created_scorers.contains_key(scorer_address.clone()) {
