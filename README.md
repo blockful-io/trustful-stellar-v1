@@ -10,11 +10,14 @@ The project is organized as follows:
 
 ```
 Trustful/
-├── contracts/       # Smart contracts for the system
-├── src/             # Main file
-├── scripts/         # Utility scripts for deployment and testing
-├── tests/           # Test cases for the contracts
-└── README.md        # Project documentation
+├── contracts/           # Smart contracts for the system
+│   ├── deployer/       # Contract deployment and initialization
+│   ├── scorer/         # Badge and user management
+│   └── scorer_factory/ # Factory for creating scorer instances
+├── src/                # Main file
+├── scripts/            # Utility scripts for deployment and testing
+├── tests/              # Test cases for the contracts
+└── README.md           # Project documentation
 ```
 
 ## Architecture Overview
@@ -24,7 +27,7 @@ The Trustful system is built using a modular architecture consisting of multiple
 ### Contract Summaries
 
 - **Deployer Contract**: Handles the atomic deployment and initialization of other contracts in the system.
-- **Scorer Contract**: Manages badges, scores and users.
+- **Scorer Contract**: Manages badges, scores, users, and metadata (name, description, icon).
 - **Scorer Factory Contract**: Implements a factory pattern to deploy multiple Scorer Contracts efficiently.
 
 For detailed information on each contract's methods and functionalities, please refer to the README files in the `contracts/` folder.
@@ -57,6 +60,16 @@ Organizes operations in a secure sequence: validations, state modifications, and
 
 #### Atomic Deployment
 Ensures system initialization occurs in a single atomic transaction, preventing invalid intermediate states and Front-Running.
+
+## Key Features
+
+- **Badge Management**:  Manage digital badges with associated scores (0-10000)
+- **User Management**: Register and manage users with active/inactive status
+- **Manager System**: Role-based access control for contract administration
+- **Metadata Support**: Each scorer instance includes name, description, and icon
+- **Event System**: Comprehensive event emission for all major operations
+- **Factory Pattern**: Efficient deployment of multiple scorer instances
+- **Upgradeable Contracts**: Support for contract upgrades while preserving state
 
 ## Development
 
@@ -139,4 +152,20 @@ chmod +x scripts/add_user_manager.sh
 ```
 
 Note: Replace `alice` and `bob` with your actual account names. The source account (`-s`) should be the admin account that deployed the contracts, while the target account (`-t`) is the account you want to add as a user/manager.
+
+## Security Considerations
+
+- All contract functions implement proper authorization checks
+- Badge scores are limited to a maximum of 10000
+- Contract upgrades require proper authorization
+- User and manager operations are protected by role-based access control
+- All state changes emit events for auditability
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 

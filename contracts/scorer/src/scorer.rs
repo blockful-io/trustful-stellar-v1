@@ -43,15 +43,32 @@ enum Error {
     UserDoesNotExist,
     BadgeAlreadyExists,
     BadgeNotFound,
-    InvalidBadgeName,
-    InvalidBadgeScore,
+    InvalidScoreRange,
+    EmptyArg,
+    ScorerCreatorNotFound,
 }
 
 #[contractimpl]
 impl ScorerContract {
     /// Contract constructor
+    /// 
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `scorer_creator` - The address of the contract creator who will be the initial manager
+    /// * `scorer_badges` - The initial set of badges for the contract
+    /// * `name` - The name of the scorer
+    /// * `description` - The description of the scorer
+    /// * `icon` - The icon URL or identifier for the scorer
+    /// 
+    /// # Panics
+    /// * When the contract is already initialized
+    /// * When any of the required string arguments are empty
+    /// * When the scorer_creator fails authentication
     pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<BadgeId, u32>, name: String, description: String, icon: String) {
-        
+        if name.is_empty() || description.is_empty() || icon.is_empty() {
+            panic!("{:?}", Error::EmptyArg);
+        }
+
         // Ensure that the contract is not initialized
         if Self::is_initialized(&env) {
             panic!("{:?}", Error::ContractAlreadyInitialized);
@@ -77,7 +94,7 @@ impl ScorerContract {
         // Emit a initialization event
         env.events().publish(
             (TOPIC_INIT, symbol_short!("contract")),
-            (scorer_creator, initial_managers, scorer_badges, name, description),
+            (scorer_creator, initial_managers, scorer_badges, name, description, icon),
         );
     }
 
@@ -101,9 +118,13 @@ impl ScorerContract {
     /// 
     /// # Panics
     /// * If the caller is not the admin
-    /// * If the storage operation fails
+    /// * If the admin address cannot be found in storage
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
-        let admin: Address = env.storage().persistent().get(&DataKey::ScorerCreator).unwrap();
+        let admin: Address = env.storage()
+            .persistent()
+            .get(&DataKey::ScorerCreator)
+            .unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorNotFound));
+        
         admin.require_auth();
         
         // Emit event before upgrade
@@ -126,6 +147,23 @@ impl ScorerContract {
         env.storage().persistent().get(&DataKey::Initialized).unwrap_or(false)
     }
 
+    /// Helper function to check if an address is the contract owner
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object
+    /// * `address` - The address to check
+    /// 
+    /// # Returns
+    /// * `bool` - True if the address is the contract owner
+    fn is_owner(env: &Env, address: &Address) -> bool {
+        let owner = env.storage()
+            .persistent()
+            .get::<DataKey, Address>(&DataKey::ScorerCreator)
+            .unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorNotFound));
+        
+        &owner == address
+    }
+
     /// Retrieves the list of managers and checks if a specific manager exists
     /// 
     /// # Arguments
@@ -137,7 +175,11 @@ impl ScorerContract {
     ///   - bool: Whether the manager exists in the list
     ///   - Vec<Address>: The complete list of managers
     fn manager_exists(env: &Env, manager: &Address) -> (bool, Vec<Address>) {
-        let managers = env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap();
+        let managers = env.storage()
+            .persistent()
+            .get::<DataKey, Vec<Address>>(&DataKey::Managers)
+            .unwrap_or_else(|| Vec::new(env));
+        
         let exists = managers.iter().any(|m| m == *manager);
         (exists, managers)
     }
@@ -150,12 +192,12 @@ impl ScorerContract {
     /// * `new_manager` - The address of the new manager to be added
     /// 
     /// # Panics
-    /// * If the sender is not the scorer creator
-    /// * If the manager already exists
+    /// * If the sender is not the scorer creator (`Error::Unauthorized`)
+    /// * If the manager already exists (`Error::ManagerAlreadyExists`)
     pub fn add_manager(env: Env, sender: Address, new_manager: Address) {
         sender.require_auth();
         
-        if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
+        if !Self::is_owner(&env, &sender) {
             panic!("{:?}", Error::Unauthorized);
         }
 
@@ -182,12 +224,12 @@ impl ScorerContract {
     /// * `manager_to_remove` - The address of the manager to be removed
     /// 
     /// # Panics
-    /// * If the sender is not the scorer creator
-    /// * If the manager does not exist
+    /// * If the sender is not the scorer creator (`Error::Unauthorized`)
+    /// * If the manager does not exist (`Error::ManagerNotFound`)
     pub fn remove_manager(env: Env, sender: Address, manager_to_remove: Address) {
         sender.require_auth();
         
-        if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
+        if !Self::is_owner(&env, &sender) {
             panic!("{:?}", Error::Unauthorized);
         }
         
@@ -216,10 +258,16 @@ impl ScorerContract {
     /// 
     /// # Authorization
     /// * Requires authorization from the user being added
+    /// 
+    /// # Panics
+    /// * If the user already exists and is active (`Error::UserAlreadyExist`)
     pub fn add_user(env: Env, user: Address) {
         user.require_auth();
 
-        let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
+        let mut users = env.storage()
+            .persistent()
+            .get::<DataKey, Map<Address, bool>>(&DataKey::Users)
+            .unwrap_or_else(|| Map::new(&env));
 
         // Check if user already exists and is active
         if users.contains_key(user.clone()) && users.get(user.clone()).unwrap() {
@@ -246,11 +294,14 @@ impl ScorerContract {
     /// * Requires authorization from the user
     /// 
     /// # Panics
-    /// * If the user does not exist or is already inactive
+    /// * If the user does not exist or is already inactive (`Error::UserDoesNotExist`)
     pub fn remove_user(env: Env, user: Address) {
         user.require_auth();
         
-        let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
+        let mut users = env.storage()
+            .persistent()
+            .get::<DataKey, Map<Address, bool>>(&DataKey::Users)
+            .unwrap_or_else(|| panic!("{:?}", Error::UserDoesNotExist));
 
         // Check if user doesn't exist or is already inactive
         if !users.contains_key(user.clone()) || !users.get(user.clone()).unwrap() {
@@ -277,7 +328,10 @@ impl ScorerContract {
     ///   - Key: User's address
     ///   - Value: User's status (true = active, false = inactive)
     pub fn get_users(env: Env) -> Map<Address, bool> {
-        env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap()
+        env.storage()
+            .persistent()
+            .get::<DataKey, Map<Address, bool>>(&DataKey::Users)
+            .unwrap_or_else(|| Map::new(&env))
     }
 
     /// Retrieves all scorer badges from the contract's storage
@@ -286,34 +340,47 @@ impl ScorerContract {
     /// * `env` - The environment object providing access to the contract's storage
     /// 
     /// # Returns
-    /// * `Map<BadgeId, BadgeDetails>` - A map where:
+    /// * `Map<BadgeId, u32>` - A map where:
     ///   - Key: Badge ID (BadgeId struct)
-    ///   - Value: BadgeDetails struct containing the badge details
+    ///   - Value: Badge score value
     pub fn get_badges(env: Env) -> Map<BadgeId, u32> {
-        env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap()
+        env.storage()
+            .persistent()
+            .get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges)
+            .unwrap_or_else(|| Map::new(&env))
     }
 
     /// Retrieves all the managers from the contract.
     ///
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    ///
     /// # Returns
-    /// * A map of addresses to their manager status (true or false).
+    /// * `Vec<Address>` - A vector of all manager addresses
     ///
     /// # Panics
-    /// * This function panic if there is no manager object.
+    /// * When the managers vector cannot be found in storage (`Error::ManagersNotFound`)
     pub fn get_managers(env: Env) -> Vec<Address> {
-        env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers)
+        env.storage()
+            .persistent()
+            .get::<DataKey, Vec<Address>>(&DataKey::Managers)
             .unwrap_or_else(|| panic!("{:?}", Error::ManagersNotFound))
     }
 
     /// Retrieves the address of the contract creator.
     ///
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    ///
     /// # Returns
-    /// * The address of the scorer factory creator.
+    /// * `Address` - The address of the scorer creator
     ///
     /// # Panics
-    /// * This function will panic if the creator's address is not found in storage.
+    /// * When the creator's address is not found in storage (`Error::ScorerCreatorDoesNotExist`)
     pub fn get_contract_owner(env: Env) -> Address {
-        env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator)
+        env.storage()
+            .persistent()
+            .get::<DataKey, Address>(&DataKey::ScorerCreator)
             .unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorDoesNotExist))
     }
 
@@ -327,10 +394,10 @@ impl ScorerContract {
     /// * `score` - The score value of the badge
     /// 
     /// # Panics
-    /// * If the sender is not a manager
-    /// * If a badge with the given name and issuer already exists
-    /// * If the badge name is empty
-    /// * If the badge score is invalid
+    /// * If the sender is not a manager (`Error::Unauthorized`)
+    /// * If a badge with the given name and issuer already exists (`Error::BadgeAlreadyExists`)
+    /// * If the badge name is empty (`Error::EmptyArg`)
+    /// * If the badge score is invalid (greater than 10000) (`Error::InvalidScoreRange`)
     pub fn add_badge(env: Env, sender: Address, name: String, issuer: Address, score: u32) {
         sender.require_auth();
         
@@ -340,17 +407,20 @@ impl ScorerContract {
             panic!("{:?}", Error::Unauthorized);
         }
         
-        // Validate badge data
+        // Validate badge name
         if name.is_empty() {
-            panic!("{:?}", Error::InvalidBadgeName);
+            panic!("{:?}", Error::EmptyArg);
         }
         
-        // Validate badge score (assuming score should be positive)
-        if score == 0 {
-            panic!("{:?}", Error::InvalidBadgeScore);
+        // Validate badge score
+        if score > 10000 {
+            panic!("{:?}", Error::InvalidScoreRange);
         }
         
-        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap();
+        let mut badges = env.storage()
+            .persistent()
+            .get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges)
+            .unwrap_or_else(|| Map::new(&env));
         
         // Create the badge ID and details
         let badge_id = BadgeId {
@@ -381,8 +451,8 @@ impl ScorerContract {
     /// * `issuer` - The issuer of the badge to remove
     /// 
     /// # Panics
-    /// * If the sender is not a manager
-    /// * If the badge with the given name and issuer doesn't exist
+    /// * If the sender is not a manager (`Error::Unauthorized`)
+    /// * If the badge with the given name and issuer doesn't exist (`Error::BadgeNotFound`)
     pub fn remove_badge(env: Env, sender: Address, name: String, issuer: Address) {
         sender.require_auth();
         
@@ -392,7 +462,10 @@ impl ScorerContract {
             panic!("{:?}", Error::Unauthorized);
         }
         
-        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap();
+        let mut badges = env.storage()
+            .persistent()
+            .get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges)
+            .unwrap_or_else(|| panic!("{:?}", Error::BadgeNotFound));
         
         // Create the badge key
         let badge_id = BadgeId {
@@ -414,6 +487,35 @@ impl ScorerContract {
             (TOPIC_BADGE, symbol_short!("remove")),
             (badge_id, badge_details, sender),
         );
+    }
+
+    /// Retrieves contract metadata (name, description, icon)
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// 
+    /// # Returns
+    /// * `(String, String, String)` - A tuple containing:
+    ///   - name: Contract name
+    ///   - description: Contract description
+    ///   - icon: Contract icon
+    pub fn get_metadata(env: Env) -> (String, String, String) {
+        let name = env.storage()
+            .persistent()
+            .get::<DataKey, String>(&DataKey::Name)
+            .unwrap_or_else(|| String::from_str(&env, ""));
+            
+        let description = env.storage()
+            .persistent()
+            .get::<DataKey, String>(&DataKey::Description)
+            .unwrap_or_else(|| String::from_str(&env, ""));
+            
+        let icon = env.storage()
+            .persistent()
+            .get::<DataKey, String>(&DataKey::Icon)
+            .unwrap_or_else(|| String::from_str(&env, ""));
+            
+        (name, description, icon)
     }
 }
 
@@ -899,30 +1001,14 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "InvalidBadgeName")]
+    #[should_panic(expected = "EmptyArg")]
     fn test_add_badge_empty_name() {
         let (env, scorer_creator, client) = setup_contract();
         
-        // Create a badge with empty name
-        let name = String::from_str(&env, ""); // Empty name
+        let name = String::from_str(&env, "");
         let issuer = scorer_creator.clone();
         let score = 100;
         
-        // This should panic because the badge name is empty
-        client.add_badge(&scorer_creator, &name, &issuer, &score);
-    }
-
-    #[test]
-    #[should_panic(expected = "InvalidBadgeScore")]
-    fn test_add_badge_invalid_score() {
-        let (env, scorer_creator, client) = setup_contract();
-        
-        // Create a badge with zero score
-        let name = String::from_str(&env, "Invalid Score Badge");
-        let issuer = scorer_creator.clone();
-        let score = 0; // Invalid score
-        
-        // This should panic because the badge score is zero
         client.add_badge(&scorer_creator, &name, &issuer, &score);
     }
 
@@ -965,5 +1051,187 @@ mod test {
         
         // Verify initial contract version
         assert_eq!(1, client.contract_version());
+    }
+
+    #[test]
+    #[should_panic(expected = "EmptyArg")]
+    fn test_initialize_empty_args() {
+        let (env, scorer_creator, scorer_client) = setup_contract();
+        let scorer_badges = Map::new(&env);
+        
+        // Teste com nome vazio
+        scorer_client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &String::from_str(&env, ""),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, "icon.png")
+        );
+    }
+
+    #[test]
+    fn test_add_badge_max_score() {
+        let (env, scorer_creator, client) = setup_contract();
+        
+        let name = String::from_str(&env, "Max Score Badge");
+        let issuer = scorer_creator.clone();
+        let score = 10000;
+        
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
+        
+        let badges = client.get_badges();
+        let badge_id = BadgeId {
+            name: name.clone(),
+            issuer: issuer.clone(),
+        };
+        
+        assert_eq!(badges.get(badge_id).unwrap(), score);
+    }
+
+    #[test]
+    fn test_initialize_storage_state() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let scorer_creator = Address::generate(&env);
+        let scorer_badges = Map::new(&env);
+        let name = String::from_str(&env, "Test Name");
+        let description = String::from_str(&env, "Test Description");
+        let icon = String::from_str(&env, "test_icon.png");
+        
+        let scorer_contract_id = env.register_contract(None, ScorerContract);
+        let client = ScorerContractClient::new(&env, &scorer_contract_id);
+
+        client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &name,
+            &description,
+            &icon
+        );
+
+        let is_initialized: bool = env.as_contract(&client.address, || {
+            env.storage().persistent().get(&DataKey::Initialized).unwrap()
+        });
+        assert!(is_initialized);
+
+        let stored_creator = client.get_contract_owner();
+        assert_eq!(stored_creator, scorer_creator);
+
+        let managers = client.get_managers();
+        assert_eq!(managers.len(), 1);
+        assert_eq!(managers.get(0).unwrap(), scorer_creator);
+
+        let expected_init_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_INIT), symbol_short!("contract")).into_val(&env),
+            (
+                scorer_creator,
+                managers,
+                scorer_badges,
+                name,
+                description,
+                icon
+            ).into_val(&env)
+        );
+        
+        assert!(env.events().all().contains(&expected_init_event), 
+            "Initialization event not found in events list");
+    }
+
+    #[test]
+    fn test_get_contract_metadata() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let scorer_creator = Address::generate(&env);
+        let scorer_badges = Map::new(&env);
+        let name = String::from_str(&env, "Test Name");
+        let description = String::from_str(&env, "Test Description");
+        let icon = String::from_str(&env, "test_icon.png");
+        
+        let scorer_contract_id = env.register_contract(None, ScorerContract);
+        let client = ScorerContractClient::new(&env, &scorer_contract_id);
+
+        client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &name,
+            &description,
+            &icon
+        );
+
+        let stored_name: String = env.as_contract(&client.address, || {
+            env.storage().persistent().get(&DataKey::Name).unwrap()
+        });
+        assert_eq!(stored_name, name);
+
+        let stored_description: String = env.as_contract(&client.address, || {
+            env.storage().persistent().get(&DataKey::Description).unwrap()
+        });
+        assert_eq!(stored_description, description);
+
+        let stored_icon: String = env.as_contract(&client.address, || {
+            env.storage().persistent().get(&DataKey::Icon).unwrap()
+        });
+        assert_eq!(stored_icon, icon);
+    }
+
+    #[test]
+    fn test_user_read_after_remove() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let scorer_creator = Address::generate(&env);
+        let scorer_badges = Map::new(&env);
+        let user = Address::generate(&env);
+        
+        let scorer_contract_id = env.register_contract(None, ScorerContract);
+        let client = ScorerContractClient::new(&env, &scorer_contract_id);
+
+        client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &String::from_str(&env, "Test"),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, "icon.png")
+        );
+
+        client.add_user(&user);
+        
+        client.remove_user(&user);
+        
+        client.add_user(&user);
+        
+        let users = client.get_users();
+        assert!(users.get(user).unwrap());
+    }
+
+    #[test]
+    #[should_panic(expected = "InvalidScoreRange")]
+    fn test_add_badge_score_above_max() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let scorer_creator = Address::generate(&env);
+        let scorer_badges = Map::new(&env);
+        
+        let scorer_contract_id = env.register_contract(None, ScorerContract);
+        let client = ScorerContractClient::new(&env, &scorer_contract_id);
+
+        client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &String::from_str(&env, "Test"),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, "icon.png")
+        );
+        
+        client.add_badge(
+            &scorer_creator,
+            &String::from_str(&env, "Test Badge"),
+            &scorer_creator,
+            &10001
+        );
     }
 }   

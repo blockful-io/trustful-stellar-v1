@@ -7,8 +7,9 @@ The Scorer Factory Contract is a core component of the Trustful system that mana
 The Scorer Factory Contract provides functionality to:
 - Deploy new Scorer contracts with proper initialization
 - Manage authorized deployers through a manager system
-- Track all created Scorer contracts
+- Track all created Scorer contracts and their metadata
 - Control access to factory operations
+- Remove Scorer contracts when needed
 
 ## Contract Interface
 
@@ -42,9 +43,20 @@ Deploys a new Scorer contract instance.
 - `deployer`: Address authorized to deploy the contract
 - `salt`: Unique value for contract address generation
 - `init_fn`: Initialization function name
-- `init_args`: Arguments for initialization
+- `init_args`: Arguments for initialization (creator, badges, name, description, icon)
 **Returns:**
 - Address of the newly deployed Scorer contract
+
+#### `remove_scorer`
+```rust
+pub fn remove_scorer(env: Env, manager: Address, scorer_address: Address)
+```
+Removes a Scorer contract from the factory.
+
+**Parameters:**
+- `env`: The Soroban environment
+- `manager`: Address of the manager removing the scorer
+- `scorer_address`: Address of the scorer to remove
 
 ### Administrative Methods
 
@@ -74,9 +86,9 @@ Removes a manager from the factory.
 
 #### `get_scorers`
 ```rust
-pub fn get_scorers(env: Env) -> Map<Address, bool>
+pub fn get_scorers(env: Env) -> Map<Address, (String, String, String)>
 ```
-Returns all Scorer contracts created by the factory.
+Returns all Scorer contracts created by the factory with their metadata (name, description, icon).
 
 #### `is_initialized`
 ```rust
@@ -102,11 +114,33 @@ The contract stores data using the following keys:
 
 ```rust
 enum DataKey {
-    CreatedScorers,      // Map of created Scorer contracts
+    CreatedScorers,      // Map of created Scorer contracts and their metadata
     Initialized,         // Initialization status
     ScorerFactoryCreator, // Factory creator address
     Managers,            // Map of authorized managers
     ScorerWasmHash,      // Hash of Scorer contract WASM
 }
 ```
+
+## Events
+
+The contract emits events for all major operations:
+
+- Scorer creation: `(TOPIC_SCORER, "create")` with scorer address and metadata
+- Manager addition: `(TOPIC_MANAGER, "add")` with manager address
+- Manager removal: `(TOPIC_MANAGER, "remove")` with manager address
+- Scorer removal: `(TOPIC_SCORER, "remove")` with scorer address
+
+## Testing
+
+The contract includes comprehensive tests that verify:
+- Contract initialization
+- Scorer creation with metadata
+- Manager administration
+- Scorer removal
+- Authorization checks
+- Event emission
+- Metadata management
+
+For detailed test examples, refer to the test module in the contract source code.
 
