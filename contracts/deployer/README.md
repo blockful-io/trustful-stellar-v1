@@ -8,6 +8,7 @@ The Deployer Contract serves as a deployment mechanism that:
 - Enables atomic deployment and initialization of contracts
 - Manages authorization of deployment operations
 - Provides a standardized way to deploy contracts within the Trustful ecosystem
+- Ensures secure contract deployment and initialization
 
 ## Contract Interface
 
@@ -40,4 +41,37 @@ This is the main method of the Deployer contract that handles the deployment and
 - A tuple containing:
   - The address of the newly deployed contract
   - The result value from the initialization function call
+
+## Security Features
+
+The Deployer Contract implements several security measures:
+
+1. **Authorization Check**: Only authorized deployers can deploy contracts
+2. **Atomic Operations**: Deployment and initialization occur in a single transaction
+3. **Unique Address Generation**: Uses salt to ensure unique contract addresses
+4. **Initialization Validation**: Verifies initialization function exists and is valid
+
+## Usage Example
+
+```rust
+// Deploy a new contract
+let (contract_address, init_result) = deployer_client.deploy(
+    &deployer,
+    &wasm_hash,
+    &salt,
+    &init_fn,
+    &init_args
+);
+```
+
+## Testing
+
+The contract includes comprehensive tests that verify:
+- Contract deployment
+- Initialization process
+- Authorization checks
+- Error handling
+- Address generation uniqueness
+
+For detailed test examples, refer to the test module in the contract source code.
 
