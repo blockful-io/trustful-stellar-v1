@@ -25,7 +25,8 @@ enum Error {
     ManagersNotFound,
     ContractCreatorNotFound,
     ScorersWereNotFound,
-    ScorerNotFound
+    ScorerNotFound,
+    InvalidInitArgs
 }
 
 #[contract]
@@ -119,6 +120,10 @@ impl ScorerFactoryContract {
         // Skip authorization if deployer is the current contract
         if deployer != env.current_contract_address() {
             deployer.require_auth();
+        }
+
+        if init_args.len() < 3 {
+            panic!("{:?}", Error::InvalidInitArgs);
         }
 
         // Get the stored WASM hash
