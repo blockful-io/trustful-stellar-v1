@@ -45,11 +45,25 @@ enum Error {
     BadgeNotFound,
     InvalidScoreRange,
     EmptyArg,
+    ScorerCreatorNotFound,
 }
 
 #[contractimpl]
 impl ScorerContract {
     /// Contract constructor
+    /// 
+    /// # Arguments
+    /// * `env` - The Soroban environment
+    /// * `scorer_creator` - The address of the contract creator who will be the initial manager
+    /// * `scorer_badges` - The initial set of badges for the contract
+    /// * `name` - The name of the scorer
+    /// * `description` - The description of the scorer
+    /// * `icon` - The icon URL or identifier for the scorer
+    /// 
+    /// # Panics
+    /// * When the contract is already initialized
+    /// * When any of the required string arguments are empty
+    /// * When the scorer_creator fails authentication
     pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<BadgeId, u32>, name: String, description: String, icon: String) {
         if name.is_empty() || description.is_empty() || icon.is_empty() {
             panic!("{:?}", Error::EmptyArg);
@@ -104,9 +118,13 @@ impl ScorerContract {
     /// 
     /// # Panics
     /// * If the caller is not the admin
-    /// * If the storage operation fails
+    /// * If the admin address cannot be found in storage
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
-        let admin: Address = env.storage().persistent().get(&DataKey::ScorerCreator).unwrap();
+        let admin: Address = env.storage()
+            .persistent()
+            .get(&DataKey::ScorerCreator)
+            .unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorNotFound));
+        
         admin.require_auth();
         
         // Emit event before upgrade
@@ -129,6 +147,23 @@ impl ScorerContract {
         env.storage().persistent().get(&DataKey::Initialized).unwrap_or(false)
     }
 
+    /// Helper function to check if an address is the contract owner
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object
+    /// * `address` - The address to check
+    /// 
+    /// # Returns
+    /// * `bool` - True if the address is the contract owner
+    fn is_owner(env: &Env, address: &Address) -> bool {
+        let owner = env.storage()
+            .persistent()
+            .get::<DataKey, Address>(&DataKey::ScorerCreator)
+            .unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorNotFound));
+        
+        &owner == address
+    }
+
     /// Retrieves the list of managers and checks if a specific manager exists
     /// 
     /// # Arguments
@@ -140,7 +175,11 @@ impl ScorerContract {
     ///   - bool: Whether the manager exists in the list
     ///   - Vec<Address>: The complete list of managers
     fn manager_exists(env: &Env, manager: &Address) -> (bool, Vec<Address>) {
-        let managers = env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers).unwrap();
+        let managers = env.storage()
+            .persistent()
+            .get::<DataKey, Vec<Address>>(&DataKey::Managers)
+            .unwrap_or_else(|| Vec::new(env));
+        
         let exists = managers.iter().any(|m| m == *manager);
         (exists, managers)
     }
@@ -153,12 +192,12 @@ impl ScorerContract {
     /// * `new_manager` - The address of the new manager to be added
     /// 
     /// # Panics
-    /// * If the sender is not the scorer creator
-    /// * If the manager already exists
+    /// * If the sender is not the scorer creator (`Error::Unauthorized`)
+    /// * If the manager already exists (`Error::ManagerAlreadyExists`)
     pub fn add_manager(env: Env, sender: Address, new_manager: Address) {
         sender.require_auth();
         
-        if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
+        if !Self::is_owner(&env, &sender) {
             panic!("{:?}", Error::Unauthorized);
         }
 
@@ -185,12 +224,12 @@ impl ScorerContract {
     /// * `manager_to_remove` - The address of the manager to be removed
     /// 
     /// # Panics
-    /// * If the sender is not the scorer creator
-    /// * If the manager does not exist
+    /// * If the sender is not the scorer creator (`Error::Unauthorized`)
+    /// * If the manager does not exist (`Error::ManagerNotFound`)
     pub fn remove_manager(env: Env, sender: Address, manager_to_remove: Address) {
         sender.require_auth();
         
-        if sender != env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator).unwrap() {
+        if !Self::is_owner(&env, &sender) {
             panic!("{:?}", Error::Unauthorized);
         }
         
@@ -219,10 +258,16 @@ impl ScorerContract {
     /// 
     /// # Authorization
     /// * Requires authorization from the user being added
+    /// 
+    /// # Panics
+    /// * If the user already exists and is active (`Error::UserAlreadyExist`)
     pub fn add_user(env: Env, user: Address) {
         user.require_auth();
 
-        let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
+        let mut users = env.storage()
+            .persistent()
+            .get::<DataKey, Map<Address, bool>>(&DataKey::Users)
+            .unwrap_or_else(|| Map::new(&env));
 
         // Check if user already exists and is active
         if users.contains_key(user.clone()) && users.get(user.clone()).unwrap() {
@@ -249,11 +294,14 @@ impl ScorerContract {
     /// * Requires authorization from the user
     /// 
     /// # Panics
-    /// * If the user does not exist or is already inactive
+    /// * If the user does not exist or is already inactive (`Error::UserDoesNotExist`)
     pub fn remove_user(env: Env, user: Address) {
         user.require_auth();
         
-        let mut users = env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap();
+        let mut users = env.storage()
+            .persistent()
+            .get::<DataKey, Map<Address, bool>>(&DataKey::Users)
+            .unwrap_or_else(|| panic!("{:?}", Error::UserDoesNotExist));
 
         // Check if user doesn't exist or is already inactive
         if !users.contains_key(user.clone()) || !users.get(user.clone()).unwrap() {
@@ -280,7 +328,10 @@ impl ScorerContract {
     ///   - Key: User's address
     ///   - Value: User's status (true = active, false = inactive)
     pub fn get_users(env: Env) -> Map<Address, bool> {
-        env.storage().persistent().get::<DataKey, Map<Address, bool>>(&DataKey::Users).unwrap()
+        env.storage()
+            .persistent()
+            .get::<DataKey, Map<Address, bool>>(&DataKey::Users)
+            .unwrap_or_else(|| Map::new(&env))
     }
 
     /// Retrieves all scorer badges from the contract's storage
@@ -289,34 +340,47 @@ impl ScorerContract {
     /// * `env` - The environment object providing access to the contract's storage
     /// 
     /// # Returns
-    /// * `Map<BadgeId, BadgeDetails>` - A map where:
+    /// * `Map<BadgeId, u32>` - A map where:
     ///   - Key: Badge ID (BadgeId struct)
-    ///   - Value: BadgeDetails struct containing the badge details
+    ///   - Value: Badge score value
     pub fn get_badges(env: Env) -> Map<BadgeId, u32> {
-        env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap()
+        env.storage()
+            .persistent()
+            .get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges)
+            .unwrap_or_else(|| Map::new(&env))
     }
 
     /// Retrieves all the managers from the contract.
     ///
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    ///
     /// # Returns
-    /// * A map of addresses to their manager status (true or false).
+    /// * `Vec<Address>` - A vector of all manager addresses
     ///
     /// # Panics
-    /// * This function panic if there is no manager object.
+    /// * When the managers vector cannot be found in storage (`Error::ManagersNotFound`)
     pub fn get_managers(env: Env) -> Vec<Address> {
-        env.storage().persistent().get::<DataKey, Vec<Address>>(&DataKey::Managers)
+        env.storage()
+            .persistent()
+            .get::<DataKey, Vec<Address>>(&DataKey::Managers)
             .unwrap_or_else(|| panic!("{:?}", Error::ManagersNotFound))
     }
 
     /// Retrieves the address of the contract creator.
     ///
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    ///
     /// # Returns
-    /// * The address of the scorer factory creator.
+    /// * `Address` - The address of the scorer creator
     ///
     /// # Panics
-    /// * This function will panic if the creator's address is not found in storage.
+    /// * When the creator's address is not found in storage (`Error::ScorerCreatorDoesNotExist`)
     pub fn get_contract_owner(env: Env) -> Address {
-        env.storage().persistent().get::<DataKey, Address>(&DataKey::ScorerCreator)
+        env.storage()
+            .persistent()
+            .get::<DataKey, Address>(&DataKey::ScorerCreator)
             .unwrap_or_else(|| panic!("{:?}", Error::ScorerCreatorDoesNotExist))
     }
 
@@ -330,10 +394,10 @@ impl ScorerContract {
     /// * `score` - The score value of the badge
     /// 
     /// # Panics
-    /// * If the sender is not a manager
-    /// * If a badge with the given name and issuer already exists
-    /// * If the badge name is empty
-    /// * If the badge score is invalid
+    /// * If the sender is not a manager (`Error::Unauthorized`)
+    /// * If a badge with the given name and issuer already exists (`Error::BadgeAlreadyExists`)
+    /// * If the badge name is empty (`Error::EmptyArg`)
+    /// * If the badge score is invalid (greater than 10000) (`Error::InvalidScoreRange`)
     pub fn add_badge(env: Env, sender: Address, name: String, issuer: Address, score: u32) {
         sender.require_auth();
         
@@ -353,7 +417,10 @@ impl ScorerContract {
             panic!("{:?}", Error::InvalidScoreRange);
         }
         
-        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap();
+        let mut badges = env.storage()
+            .persistent()
+            .get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges)
+            .unwrap_or_else(|| Map::new(&env));
         
         // Create the badge ID and details
         let badge_id = BadgeId {
@@ -384,8 +451,8 @@ impl ScorerContract {
     /// * `issuer` - The issuer of the badge to remove
     /// 
     /// # Panics
-    /// * If the sender is not a manager
-    /// * If the badge with the given name and issuer doesn't exist
+    /// * If the sender is not a manager (`Error::Unauthorized`)
+    /// * If the badge with the given name and issuer doesn't exist (`Error::BadgeNotFound`)
     pub fn remove_badge(env: Env, sender: Address, name: String, issuer: Address) {
         sender.require_auth();
         
@@ -395,7 +462,10 @@ impl ScorerContract {
             panic!("{:?}", Error::Unauthorized);
         }
         
-        let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap();
+        let mut badges = env.storage()
+            .persistent()
+            .get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges)
+            .unwrap_or_else(|| panic!("{:?}", Error::BadgeNotFound));
         
         // Create the badge key
         let badge_id = BadgeId {
@@ -417,6 +487,35 @@ impl ScorerContract {
             (TOPIC_BADGE, symbol_short!("remove")),
             (badge_id, badge_details, sender),
         );
+    }
+
+    /// Retrieves contract metadata (name, description, icon)
+    /// 
+    /// # Arguments
+    /// * `env` - The environment object providing access to the contract's storage
+    /// 
+    /// # Returns
+    /// * `(String, String, String)` - A tuple containing:
+    ///   - name: Contract name
+    ///   - description: Contract description
+    ///   - icon: Contract icon
+    pub fn get_metadata(env: Env) -> (String, String, String) {
+        let name = env.storage()
+            .persistent()
+            .get::<DataKey, String>(&DataKey::Name)
+            .unwrap_or_else(|| String::from_str(&env, ""));
+            
+        let description = env.storage()
+            .persistent()
+            .get::<DataKey, String>(&DataKey::Description)
+            .unwrap_or_else(|| String::from_str(&env, ""));
+            
+        let icon = env.storage()
+            .persistent()
+            .get::<DataKey, String>(&DataKey::Icon)
+            .unwrap_or_else(|| String::from_str(&env, ""));
+            
+        (name, description, icon)
     }
 }
 
