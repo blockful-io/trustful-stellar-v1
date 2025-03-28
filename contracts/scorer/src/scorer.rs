@@ -43,15 +43,18 @@ enum Error {
     UserDoesNotExist,
     BadgeAlreadyExists,
     BadgeNotFound,
-    InvalidBadgeName,
-    InvalidBadgeScore,
+    InvalidScoreRange,
+    EmptyArg,
 }
 
 #[contractimpl]
 impl ScorerContract {
     /// Contract constructor
     pub fn initialize(env: Env, scorer_creator: Address, scorer_badges: Map<BadgeId, u32>, name: String, description: String, icon: String) {
-        
+        if name.is_empty() || description.is_empty() || icon.is_empty() {
+            panic!("{:?}", Error::EmptyArg);
+        }
+
         // Ensure that the contract is not initialized
         if Self::is_initialized(&env) {
             panic!("{:?}", Error::ContractAlreadyInitialized);
@@ -340,14 +343,14 @@ impl ScorerContract {
             panic!("{:?}", Error::Unauthorized);
         }
         
-        // Validate badge data
+        // Validate badge name
         if name.is_empty() {
-            panic!("{:?}", Error::InvalidBadgeName);
+            panic!("{:?}", Error::EmptyArg);
         }
         
-        // Validate badge score (assuming score should be positive)
-        if score == 0 {
-            panic!("{:?}", Error::InvalidBadgeScore);
+        // Validate badge score
+        if score > 10000 {
+            panic!("{:?}", Error::InvalidScoreRange);
         }
         
         let mut badges = env.storage().persistent().get::<DataKey, Map<BadgeId, u32>>(&DataKey::ScorerBadges).unwrap();
@@ -899,30 +902,14 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "InvalidBadgeName")]
+    #[should_panic(expected = "EmptyArg")]
     fn test_add_badge_empty_name() {
         let (env, scorer_creator, client) = setup_contract();
         
-        // Create a badge with empty name
-        let name = String::from_str(&env, ""); // Empty name
+        let name = String::from_str(&env, "");
         let issuer = scorer_creator.clone();
         let score = 100;
         
-        // This should panic because the badge name is empty
-        client.add_badge(&scorer_creator, &name, &issuer, &score);
-    }
-
-    #[test]
-    #[should_panic(expected = "InvalidBadgeScore")]
-    fn test_add_badge_invalid_score() {
-        let (env, scorer_creator, client) = setup_contract();
-        
-        // Create a badge with zero score
-        let name = String::from_str(&env, "Invalid Score Badge");
-        let issuer = scorer_creator.clone();
-        let score = 0; // Invalid score
-        
-        // This should panic because the badge score is zero
         client.add_badge(&scorer_creator, &name, &issuer, &score);
     }
 
@@ -965,5 +952,187 @@ mod test {
         
         // Verify initial contract version
         assert_eq!(1, client.contract_version());
+    }
+
+    #[test]
+    #[should_panic(expected = "EmptyArg")]
+    fn test_initialize_empty_args() {
+        let (env, scorer_creator, scorer_client) = setup_contract();
+        let scorer_badges = Map::new(&env);
+        
+        // Teste com nome vazio
+        scorer_client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &String::from_str(&env, ""),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, "icon.png")
+        );
+    }
+
+    #[test]
+    fn test_add_badge_max_score() {
+        let (env, scorer_creator, client) = setup_contract();
+        
+        let name = String::from_str(&env, "Max Score Badge");
+        let issuer = scorer_creator.clone();
+        let score = 10000;
+        
+        client.add_badge(&scorer_creator, &name, &issuer, &score);
+        
+        let badges = client.get_badges();
+        let badge_id = BadgeId {
+            name: name.clone(),
+            issuer: issuer.clone(),
+        };
+        
+        assert_eq!(badges.get(badge_id).unwrap(), score);
+    }
+
+    #[test]
+    fn test_initialize_storage_state() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let scorer_creator = Address::generate(&env);
+        let scorer_badges = Map::new(&env);
+        let name = String::from_str(&env, "Test Name");
+        let description = String::from_str(&env, "Test Description");
+        let icon = String::from_str(&env, "test_icon.png");
+        
+        let scorer_contract_id = env.register_contract(None, ScorerContract);
+        let client = ScorerContractClient::new(&env, &scorer_contract_id);
+
+        client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &name,
+            &description,
+            &icon
+        );
+
+        let is_initialized: bool = env.as_contract(&client.address, || {
+            env.storage().persistent().get(&DataKey::Initialized).unwrap()
+        });
+        assert!(is_initialized);
+
+        let stored_creator = client.get_contract_owner();
+        assert_eq!(stored_creator, scorer_creator);
+
+        let managers = client.get_managers();
+        assert_eq!(managers.len(), 1);
+        assert_eq!(managers.get(0).unwrap(), scorer_creator);
+
+        let expected_init_event = (
+            client.address.clone(),
+            (String::from_str(&env, TOPIC_INIT), symbol_short!("contract")).into_val(&env),
+            (
+                scorer_creator,
+                managers,
+                scorer_badges,
+                name,
+                description,
+                icon
+            ).into_val(&env)
+        );
+        
+        assert!(env.events().all().contains(&expected_init_event), 
+            "Initialization event not found in events list");
+    }
+
+    #[test]
+    fn test_get_contract_metadata() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let scorer_creator = Address::generate(&env);
+        let scorer_badges = Map::new(&env);
+        let name = String::from_str(&env, "Test Name");
+        let description = String::from_str(&env, "Test Description");
+        let icon = String::from_str(&env, "test_icon.png");
+        
+        let scorer_contract_id = env.register_contract(None, ScorerContract);
+        let client = ScorerContractClient::new(&env, &scorer_contract_id);
+
+        client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &name,
+            &description,
+            &icon
+        );
+
+        let stored_name: String = env.as_contract(&client.address, || {
+            env.storage().persistent().get(&DataKey::Name).unwrap()
+        });
+        assert_eq!(stored_name, name);
+
+        let stored_description: String = env.as_contract(&client.address, || {
+            env.storage().persistent().get(&DataKey::Description).unwrap()
+        });
+        assert_eq!(stored_description, description);
+
+        let stored_icon: String = env.as_contract(&client.address, || {
+            env.storage().persistent().get(&DataKey::Icon).unwrap()
+        });
+        assert_eq!(stored_icon, icon);
+    }
+
+    #[test]
+    fn test_user_read_after_remove() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let scorer_creator = Address::generate(&env);
+        let scorer_badges = Map::new(&env);
+        let user = Address::generate(&env);
+        
+        let scorer_contract_id = env.register_contract(None, ScorerContract);
+        let client = ScorerContractClient::new(&env, &scorer_contract_id);
+
+        client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &String::from_str(&env, "Test"),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, "icon.png")
+        );
+
+        client.add_user(&user);
+        
+        client.remove_user(&user);
+        
+        client.add_user(&user);
+        
+        let users = client.get_users();
+        assert!(users.get(user).unwrap());
+    }
+
+    #[test]
+    #[should_panic(expected = "InvalidScoreRange")]
+    fn test_add_badge_score_above_max() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let scorer_creator = Address::generate(&env);
+        let scorer_badges = Map::new(&env);
+        
+        let scorer_contract_id = env.register_contract(None, ScorerContract);
+        let client = ScorerContractClient::new(&env, &scorer_contract_id);
+
+        client.initialize(
+            &scorer_creator,
+            &scorer_badges,
+            &String::from_str(&env, "Test"),
+            &String::from_str(&env, "Description"),
+            &String::from_str(&env, "icon.png")
+        );
+        
+        client.add_badge(
+            &scorer_creator,
+            &String::from_str(&env, "Test Badge"),
+            &scorer_creator,
+            &10001
+        );
     }
 }   
